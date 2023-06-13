@@ -9,6 +9,7 @@ import (
 	"github.com/epicbytes/framework/config"
 	mqtt2 "github.com/epicbytes/framework/mqtt"
 	redisPS "github.com/epicbytes/framework/pubsub/redis"
+	"github.com/epicbytes/framework/s3"
 	"github.com/epicbytes/framework/storage/mongodb"
 	"github.com/epicbytes/framework/tasks"
 	"github.com/go-redis/redis/v8"
@@ -49,6 +50,7 @@ type frmwrk struct {
 	grpcRoutes          *http.ServeMux
 	internalGrpcRoutes  *http.ServeMux
 	TGBot               *tgbotapi.BotAPI
+	S3                  s3.MinioStorage
 }
 
 type Framework interface {
@@ -73,6 +75,7 @@ type Framework interface {
 	GetMQTTClient() mqtt.Client
 	GetTGBot() *tgbotapi.BotAPI
 	MQTTPublish(topic string, obj interface{})
+	GetS3Client() s3.MinioStorage
 }
 
 type ForGateway interface {
@@ -209,6 +212,10 @@ func (f *frmwrk) GetTGBot() *tgbotapi.BotAPI {
 	return f.TGBot
 }
 
+func (f *frmwrk) GetS3Client() s3.MinioStorage {
+	return f.S3
+}
+
 // Run main livecycle
 func (f *frmwrk) Run() error {
 	wg, _ := errgroup.WithContext(context.Background())
@@ -224,6 +231,16 @@ func (f *frmwrk) Run() error {
 
 	if f.config.Redis.URI != "" {
 		f.PubSub = redisPS.New(f.config)
+	}
+
+	if f.config.S3.Address != "" {
+		f.S3 = s3.NewMinioStorage(&s3.S3Option{
+			Address:   f.config.S3.Address,
+			AccessKey: f.config.S3.AccessKey,
+			SecretKey: f.config.S3.SecretKey,
+			Bucket:    f.config.S3.Bucket,
+			Region:    f.config.S3.Region,
+		})
 	}
 
 	if f.config.Mongo.URI != "" {

@@ -14,6 +14,7 @@ type (
 		Temporal   temporalOption `envPrefix:"TEMPORAL_"`
 		Gateway    gatewayOption  `envPrefix:"GATEWAY_"`
 		Telegram   telegramOption `envPrefix:"TELEGRAM_"`
+		S3         s3Option       `envPrefix:"S3_"`
 	}
 
 	Option interface {
@@ -60,6 +61,14 @@ type (
 	telegramOption struct {
 		APIToken string `env:"API_TOKEN"`
 	}
+
+	s3Option struct {
+		Address   string `env:"ADDRESS"`
+		AccessKey string `env:"ACCESS_KEY"`
+		SecretKey string `env:"SECRET_KEY"`
+		Bucket    string `env:"BUCKET"`
+		Region    string `env:"REGION"`
+	}
 )
 
 func (o optionsFromEnv) apply(opts *Config) {
@@ -96,6 +105,10 @@ func (o telegramOption) apply(opts *Config) {
 	opts.Telegram = o
 }
 
+func (o s3Option) apply(opts *Config) {
+	opts.S3 = o
+}
+
 func WithEnvFile(envfile string) Option {
 	return optionsFromEnv{}
 }
@@ -112,6 +125,16 @@ func WithMongo(uriData string, databaseName string, entities ...mongodb.ModelEnt
 		URI:          uriData,
 		DatabaseName: databaseName,
 		Entities:     entities,
+	}
+}
+
+func WithS3(Address, AccessKey, SecretKey, Bucket, Region string) Option {
+	return s3Option{
+		Address:   Address,
+		AccessKey: AccessKey,
+		SecretKey: SecretKey,
+		Bucket:    Bucket,
+		Region:    Region,
 	}
 }
 
