@@ -2,7 +2,7 @@ package auth
 
 import (
 	"aidanwoods.dev/go-paseto"
-	"fmt"
+	"github.com/rs/zerolog/log"
 	"time"
 )
 
@@ -22,9 +22,9 @@ func newPasetoToken(userId string) string {
 
 	signed := token.V4Sign(secretKey, nil)
 
-	fmt.Println("encrypted", encrypted)
-	fmt.Println("publicKey", publicKey)
-	fmt.Println("signed", signed)
+	log.Info().Msg("encrypted: " + encrypted)
+	log.Info().Msg("publicKey: " + publicKey.ExportHex())
+	log.Info().Msg("signed: " + signed)
 
 	return publicKey.ExportHex()
 }

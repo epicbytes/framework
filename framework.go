@@ -3,7 +3,6 @@ package framework
 import (
 	"context"
 	"errors"
-	"fmt"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/epicbytes/framework/bus"
 	"github.com/epicbytes/framework/config"
@@ -59,8 +58,8 @@ type Framework interface {
 	OnFinish(fn func(ctx context.Context))
 	OnMongoReplicationModelStart(fn func(ctx context.Context, data mongodb.ReplicationEvent))
 	OnMongoReplication(fn func(ctx context.Context, data mongodb.ReplicationEvent))
-	RegisterGRPCServer(server BaseTwirpServer, path string, middlewares ...func(handler http.Handler) http.Handler)
-	RegisterInternalGRPCServer(server BaseTwirpServer, path string, middlewares ...func(handler http.Handler) http.Handler)
+	RegisterGRPCServer(server http.Handler, path string, middlewares ...func(handler http.Handler) http.Handler)
+	RegisterInternalGRPCServer(server http.Handler, path string, middlewares ...func(handler http.Handler) http.Handler)
 	GetContext() context.Context
 	GetConfig() *config.Config
 	GetModel(name mongodb.CollectionName) mongodb.Model
@@ -107,26 +106,25 @@ func (f *frmwrk) OnMongoReplication(fn func(ctx context.Context, replicationEven
 	})
 }
 
-func (f *frmwrk) RegisterGRPCServer(server BaseTwirpServer, path string, middlewares ...func(handler http.Handler) http.Handler) {
+func (f *frmwrk) RegisterGRPCServer(server http.Handler, path string, middlewares ...func(handler http.Handler) http.Handler) {
 	if f.grpcRoutes == nil {
 		f.grpcRoutes = http.NewServeMux()
 	}
-	hnd := server.(http.Handler)
 	for _, middleware := range middlewares {
-		hnd = middleware(hnd)
+		server = middleware(server)
 	}
-	f.grpcRoutes.Handle(server.PathPrefix()+path, hnd)
+	f.grpcRoutes.Handle(path, server)
 }
 
-func (f *frmwrk) RegisterInternalGRPCServer(server BaseTwirpServer, path string, middlewares ...func(handler http.Handler) http.Handler) {
+func (f *frmwrk) RegisterInternalGRPCServer(server http.Handler, path string, middlewares ...func(handler http.Handler) http.Handler) {
 	if f.internalGrpcRoutes == nil {
 		f.internalGrpcRoutes = http.NewServeMux()
 	}
-	hnd := server.(http.Handler)
+	hnd := server
 	for _, middleware := range middlewares {
 		hnd = middleware(hnd)
 	}
-	f.internalGrpcRoutes.Handle(server.PathPrefix()+path, hnd)
+	f.internalGrpcRoutes.Handle(path, hnd)
 }
 
 func (f *frmwrk) RegisterNetListener(server BaseGateway) {
@@ -177,7 +175,7 @@ func (f *frmwrk) GetModel(name mongodb.CollectionName) mongodb.Model {
 func (f *frmwrk) GetGRPCClient(name string) interface{} {
 	grpcClient, ok := f.GRPCClients.Load(name)
 	if !ok {
-		log.Fatal().Err(fmt.Errorf("can`t load grpc client: %s", name))
+		log.Error().Err(errors.New("can`t load grpc client: " + name))
 		return nil
 	}
 	return grpcClient
@@ -186,7 +184,7 @@ func (f *frmwrk) GetGRPCClient(name string) interface{} {
 func (f *frmwrk) GetInternalGRPCClient(name string) interface{} {
 	internalGRPCClient, ok := f.InternalGRPCClients.Load(name)
 	if !ok {
-		log.Fatal().Err(fmt.Errorf("can`t load grpc client: %s", name))
+		log.Error().Err(errors.New("can`t load grpc client: " + name))
 		return nil
 	}
 	return internalGRPCClient
@@ -265,9 +263,9 @@ func (f *frmwrk) Run() error {
 		f.Gateway.SetFramework(f)
 		wg.Go(func() error {
 			if f.config.Gateway.Addr == "" {
-				fmt.Println("Stack started")
+				log.Info().Msg("Stack started")
 			} else {
-				fmt.Printf("Gateway started at %s\n", f.config.Gateway.Addr)
+				log.Info().Msgf("Gateway started at %s\n", f.config.Gateway.Addr)
 			}
 			f.Gateway.Start(f.ctx)
 			return nil
@@ -279,7 +277,7 @@ func (f *frmwrk) Run() error {
 		}
 		mdl, ok := f.Models.Load(entity.Collection.String())
 		if !ok {
-			return errors.New("model is not set")
+			return errors.New("replication: model is not set")
 		}
 
 		cursor, err := mdl.(mongodb.Model).GetCollection().Find(f.ctx, bson.M{})
@@ -288,7 +286,7 @@ func (f *frmwrk) Run() error {
 		}
 		var results []bson.M
 		if err = cursor.All(context.TODO(), &results); err != nil {
-			log.Fatal().Err(err)
+			log.Error().Err(err)
 		}
 		for _, result := range results {
 			data, _ := bson.Marshal(result)
@@ -327,15 +325,34 @@ func (f *frmwrk) Run() error {
 			return nil
 		})
 	}
-
 	if f.grpcRoutes != nil {
 		wg.Go(func() error {
 			corsWrapper := cors.New(cors.Options{
+				AllowedMethods: []string{
+					http.MethodGet,
+					http.MethodPost,
+				},
 				AllowedOrigins: []string{"*"},
-				AllowedMethods: []string{"OPTIONS", "POST"},
-				AllowedHeaders: []string{"Content-Type", "Authorization"},
+				AllowedHeaders: []string{
+					"Accept-Encoding",
+					"Content-Encoding",
+					"Content-Type",
+					"Connect-Protocol-Version",
+					"Connect-Timeout-Ms",
+					"Connect-Accept-Encoding",  // Unused in web browsers, but added for future-proofing
+					"Connect-Content-Encoding", // Unused in web browsers, but added for future-proofing
+					"Grpc-Timeout",             // Used for gRPC-web
+					"X-Grpc-Web",               // Used for gRPC-web
+					"X-User-Agent",             // Used for gRPC-web
+				},
+				ExposedHeaders: []string{
+					"Content-Encoding",         // Unused in web browsers, but added for future-proofing
+					"Connect-Content-Encoding", // Unused in web browsers, but added for future-proofing
+					"Grpc-Status",              // Required for gRPC-web
+					"Grpc-Message",             // Required for gRPC-web
+				},
 			})
-			fmt.Printf("GRPC server started at %s\n", f.config.Server.Addr)
+			log.Info().Msgf("GRPC server started at %s", f.config.Server.Addr)
 			server := http.Server{Addr: f.config.Server.Addr, Handler: corsWrapper.Handler(f.grpcRoutes)}
 			lnr, err := net.Listen("tcp4", server.Addr)
 			if err != nil {
@@ -347,7 +364,7 @@ func (f *frmwrk) Run() error {
 
 	if f.internalGrpcRoutes != nil {
 		wg.Go(func() error {
-			fmt.Printf("INTERNAL GRPC server started at %s\n", f.config.Server.InternalAddr)
+			log.Info().Msgf("INTERNAL GRPC server started at %s", f.config.Server.InternalAddr)
 			server := http.Server{Addr: f.config.Server.InternalAddr, Handler: f.internalGrpcRoutes}
 			lnr, err := net.Listen("tcp4", server.Addr)
 			if err != nil {
@@ -384,14 +401,14 @@ func New(cfg *config.Config) (framework Framework) {
 
 	if frm.config.MQTTClient.URI != "" {
 		mqtOpt := mqtt.NewClientOptions()
-		mqtOpt.AddBroker(fmt.Sprintf("tcp://%s", frm.config.MQTTClient.URI))
+		mqtOpt.AddBroker("tcp://" + frm.config.MQTTClient.URI)
 		//mqtOpt.SetDefaultPublishHandler(messagePubHandler)
 		mqtOpt.SetUsername(frm.config.MQTTClient.Username)
 		mqtOpt.SetPassword(frm.config.MQTTClient.Password)
 		mqtOpt.SetClientID(frm.config.MQTTClient.ClientId)
 		mqClient := mqtt.NewClient(mqtOpt)
 		if token := mqClient.Connect(); token.Wait() && token.Error() != nil {
-			fmt.Println(token.Error())
+			log.Error().Err(token.Error())
 		}
 
 		frm.MqttClient = mqClient
@@ -401,7 +418,7 @@ func New(cfg *config.Config) (framework Framework) {
 		for _, ns := range frm.config.Temporal.Namespaces {
 			tm, err := tasks.New(frm.config.Temporal.URI, ns)
 			if err != nil {
-				log.Fatal().Err(err)
+				log.Error().Err(err)
 			}
 			frm.TaskManagers.Store(ns, tm)
 		}

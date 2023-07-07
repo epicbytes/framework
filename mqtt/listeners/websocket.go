@@ -113,7 +113,7 @@ func (l *Websocket) Serve(establish EstablishFn) {
 
 	list, err := net.Listen("tcp4", l.address)
 	if err != nil {
-		log.Fatal().Err(err)
+		log.Error().Err(err)
 	}
 
 	if l.listen.TLSConfig != nil {

@@ -1,8 +1,8 @@
 package config
 
 import (
-	"fmt"
 	"github.com/caarlos0/env/v8"
+	"github.com/rs/zerolog/log"
 )
 
 func New(opts ...Option) *Config {
@@ -13,7 +13,7 @@ func New(opts ...Option) *Config {
 	}
 
 	if err := env.Parse(cfg); err != nil {
-		fmt.Printf("%+v\n", err)
+		log.Error().Msgf("%+v\n", err)
 	}
 
 	return cfg

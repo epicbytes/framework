@@ -1,7 +1,7 @@
 package bus
 
 import (
-	"fmt"
+	"errors"
 	"sync"
 )
 
@@ -71,7 +71,7 @@ func (e *Events) Ring(event string, message Message) error {
 	defer e.mutex.RUnlock()
 
 	if _, ok := e.channels[event]; !ok {
-		return fmt.Errorf("channel %s not found", event)
+		return errors.New("channel " + event + " not found")
 	}
 
 	for _, c := range e.channels[event] {
