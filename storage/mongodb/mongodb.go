@@ -35,6 +35,7 @@ func (r ReplicationEventType) String() string {
 }
 
 type ReplicationEvent struct {
+	Id             string
 	Type           ReplicationEventType
 	CollectionName CollectionName
 	Data           []byte
