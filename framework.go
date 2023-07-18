@@ -3,6 +3,9 @@ package framework
 import (
 	"context"
 	"errors"
+	"github.com/casbin/casbin/v2"
+	"github.com/casbin/casbin/v2/model"
+	"github.com/casbin/mongodb-adapter/v3"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/epicbytes/framework/bus"
 	"github.com/epicbytes/framework/config"
@@ -20,6 +23,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
 	"net/http"
@@ -37,7 +41,6 @@ type frmwrk struct {
 	OnStartup           func(ctx context.Context)
 	OnFinish            func(ctx context.Context)
 	config              *config.Config
-	databaseClient      *mongo.Client
 	Models              sync.Map
 	Stores              map[mongodb.CollectionName]*sync.Map
 	TaskManagers        sync.Map
@@ -51,6 +54,7 @@ type frmwrk struct {
 	grpcInternalRoutes  *http.ServeMux
 	TGBot               *tgbotapi.BotAPI
 	S3                  s3.MinioStorageInt
+	enforcer            *casbin.Enforcer
 }
 
 type Framework interface {
@@ -76,6 +80,7 @@ type Framework interface {
 	GetTGBot() *tgbotapi.BotAPI
 	MQTTPublish(topic string, obj interface{})
 	GetS3Client() s3.MinioStorageInt
+	GetEnforcer() *casbin.Enforcer
 }
 
 type ForGateway interface {
@@ -155,6 +160,10 @@ func (f *frmwrk) GetContext() context.Context {
 	return f.ctx
 }
 
+func (f *frmwrk) GetEnforcer() *casbin.Enforcer {
+	return f.enforcer
+}
+
 func (f *frmwrk) GetMQTTClient() mqtt.Client {
 	return f.MqttClient
 }
@@ -170,11 +179,11 @@ func (f *frmwrk) GetConfig() *config.Config {
 }
 
 func (f *frmwrk) GetModel(name mongodb.CollectionName) mongodb.Model {
-	model, ok := f.Models.Load(name.String())
+	mdl, ok := f.Models.Load(name.String())
 	if !ok {
 		return nil
 	}
-	return model.(mongodb.Model)
+	return mdl.(mongodb.Model)
 }
 
 func (f *frmwrk) GetGRPCClient(name string) interface{} {
@@ -204,11 +213,11 @@ func (f *frmwrk) GetStore(name mongodb.CollectionName) *sync.Map {
 }
 
 func (f *frmwrk) GetTaskManager(name string) (client.Client, error) {
-	model, ok := f.TaskManagers.Load(name)
+	tsk, ok := f.TaskManagers.Load(name)
 	if !ok {
 		return nil, errors.New("task manager is not connected")
 	}
-	return model.(client.Client), nil
+	return tsk.(client.Client), nil
 }
 
 func (f *frmwrk) GetTGBot() *tgbotapi.BotAPI {
@@ -223,30 +232,6 @@ func (f *frmwrk) GetS3Client() s3.MinioStorageInt {
 func (f *frmwrk) Run() error {
 
 	var tasksRuntime []runtime.Service
-
-	/*
-		if f.Gateway != nil {
-			f.Gateway.SetFramework(f)
-			wg.Go(func() error {
-				if f.config.Gateway.Addr == "" {
-					log.Info().Msg("Stack started")
-				} else {
-					log.Info().Msgf("Gateway started at %s\n", f.config.Gateway.Addr)
-				}
-				f.Gateway.Start(f.ctx)
-				return nil
-			})
-
-		}
-
-		f.Workers.Range(func(key, value any) bool {
-			go func() {
-				err := value.(worker.Worker).Run(worker.InterruptCh())
-				log.Error().Err(err)
-				//return err
-			}()
-			return true
-		})*/
 
 	if len(f.config.Server.Addr) > 0 {
 		tasksRuntime = append(tasksRuntime, &service.GRPCService{
@@ -267,6 +252,23 @@ func (f *frmwrk) Run() error {
 			URI: f.config.Mongo.URI,
 		}
 		mongoClient.OnConnect(func(ctx context.Context, client *mongo.Client) error {
+			adapter, err := mongodbadapter.NewAdapterByDB(client, &mongodbadapter.AdapterConfig{
+				DatabaseName:   f.config.Mongo.DatabaseName,
+				CollectionName: "authorization",
+				Timeout:        0,
+				IsFiltered:     false,
+			})
+			if err != nil {
+				return err
+			}
+			mdl, err := model.NewModelFromString("[request_definition]\nr = sub, obj, act\n\n[policy_definition]\np = sub, obj, act\n\n[policy_effect]\ne = some(where (p.eft == allow))\n\n[matchers]\nm = r.sub == p.sub && r.obj == p.obj && r.act == p.act")
+			if err != nil {
+				return err
+			}
+			f.enforcer, err = casbin.NewEnforcer(mdl, adapter)
+			if err != nil {
+				return err
+			}
 			for _, entity := range f.config.Mongo.Entities {
 				f.Models.Store(entity.Collection.String(), mongodb.New(client, f.config.Mongo.DatabaseName, entity.Collection))
 				if entity.WithMemstore {
@@ -298,7 +300,8 @@ func (f *frmwrk) Run() error {
 					}
 
 					go (func() {
-						cs, err := mdl.(mongodb.Model).GetCollection().Watch(context.TODO(), entity.ReplicationQuery)
+						opts := options.ChangeStream().SetFullDocument("updateLookup")
+						cs, err := mdl.(mongodb.Model).GetCollection().Watch(context.TODO(), entity.ReplicationQuery, opts)
 						if err != nil {
 							log.Error().Err(err)
 							panic(err)

@@ -22,11 +22,7 @@ func (t *MongoClient) Init(ctx context.Context) error {
 	t.ctx = ctx
 	var err error
 	log.Debug().Msg("INITIAL MongoDB")
-	t.client, err = mongo.NewClient(options2.Client().ApplyURI(t.URI) /*SetMonitor(cmdMonitor)*/)
-	if err != nil {
-		return err
-	}
-	err = t.client.Connect(ctx)
+	t.client, err = mongo.Connect(ctx, options2.Client().ApplyURI(t.URI) /*SetMonitor(cmdMonitor)*/)
 	if err != nil {
 		return err
 	}
