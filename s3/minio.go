@@ -8,6 +8,7 @@ import (
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/rs/zerolog/log"
 	"io"
+	"net/url"
 	"time"
 )
 
@@ -85,6 +86,10 @@ func (s *MinioStorage) GetLink(key string) string {
 	sb.WriteString(key)
 
 	return sb.String()
+}
+
+func (s *MinioStorage) PresignedPutObject(ctx context.Context, key string, expires time.Duration) (*url.URL, error) {
+	return s.s3.PresignedPutObject(ctx, s.bucket, key, expires)
 }
 
 func (s *MinioStorage) PutObject(ctx context.Context, key string, object io.Reader, length int64, contentType string) (minio.UploadInfo, error) {
