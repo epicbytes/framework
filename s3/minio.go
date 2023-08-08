@@ -15,6 +15,7 @@ import (
 type MinioStorageInt interface {
 	GetBuckets(ctx context.Context) ([]minio.BucketInfo, error)
 	GetLink(key string) string
+	PresignedPutObject(ctx context.Context, key string, expires time.Duration) (*url.URL, error)
 	PutObject(ctx context.Context, key string, object io.Reader, length int64, contentType string) (minio.UploadInfo, error)
 	FPutObject(ctx context.Context, key string, path string, contentType string) (minio.UploadInfo, error)
 	GetObject(ctx context.Context, key string) ([]byte, error)
