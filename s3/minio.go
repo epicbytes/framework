@@ -48,7 +48,7 @@ func (s *MinioStorage) Init(ctx context.Context) error {
 	log.Debug().Msg("INITIAL S3")
 	minioClient, err := minio.New(s.Config.S3.Address, &minio.Options{
 		Creds:  credentials.NewStaticV4(s.Config.S3.AccessKey, s.Config.S3.SecretKey, ""),
-		Secure: false,
+		Secure: true,
 		Region: s.Config.S3.Region,
 	})
 	if err != nil {
