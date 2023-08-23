@@ -7,14 +7,15 @@ import (
 
 type (
 	Config struct {
-		Server     serverOption   `envPrefix:"SERVER_"`
-		Mongo      mongoOption    `envPrefix:"MONGO_"`
-		Redis      redisOption    `envPrefix:"REDIS_"`
-		MQTTClient mqttOption     `envPrefix:"MQTT_"`
-		Temporal   temporalOption `envPrefix:"TEMPORAL_"`
-		Gateway    gatewayOption  `envPrefix:"GATEWAY_"`
-		Telegram   telegramOption `envPrefix:"TELEGRAM_"`
-		S3         s3Option       `envPrefix:"S3_"`
+		HttpServer httpServerOption `envPrefix:"HTTP_SERVER_"`
+		Server     serverOption     `envPrefix:"SERVER_"`
+		Mongo      mongoOption      `envPrefix:"MONGO_"`
+		Redis      redisOption      `envPrefix:"REDIS_"`
+		MQTTClient mqttOption       `envPrefix:"MQTT_"`
+		Temporal   temporalOption   `envPrefix:"TEMPORAL_"`
+		Gateway    gatewayOption    `envPrefix:"GATEWAY_"`
+		Telegram   telegramOption   `envPrefix:"TELEGRAM_"`
+		S3         s3Option         `envPrefix:"S3_"`
 	}
 
 	Option interface {
@@ -22,6 +23,10 @@ type (
 	}
 
 	optionsFromEnv Config
+
+	httpServerOption struct {
+		Addr string `env:"ADDR"`
+	}
 
 	serverOption struct {
 		Addr         string `env:"ADDR"`
@@ -68,6 +73,7 @@ type (
 		SecretKey string `env:"SECRET_KEY"`
 		Bucket    string `env:"BUCKET"`
 		Region    string `env:"REGION"`
+		Secure    bool   `env:"SECURE"`
 	}
 )
 
@@ -75,10 +81,17 @@ func (o optionsFromEnv) apply(opts *Config) {
 	opts.Mongo = o.Mongo
 	opts.Redis = o.Redis
 	opts.Temporal = o.Temporal
+	opts.S3 = o.S3
+	opts.Gateway = o.Gateway
+	opts.Server = o.Server
 }
 
 func (o serverOption) apply(opts *Config) {
 	opts.Server = o
+}
+
+func (o httpServerOption) apply(opts *Config) {
+	opts.HttpServer = o
 }
 
 func (o mongoOption) apply(opts *Config) {
@@ -113,6 +126,12 @@ func WithEnvFile(envfile string) Option {
 	return optionsFromEnv{}
 }
 
+func WithHTTPServer(address string) Option {
+	return httpServerOption{
+		Addr: address,
+	}
+}
+
 func WithGRPCServer(address string, internalAddress string) Option {
 	return serverOption{
 		Addr:         address,
@@ -128,13 +147,14 @@ func WithMongo(uriData string, databaseName string, entities ...mongodb.ModelEnt
 	}
 }
 
-func WithS3(Address, AccessKey, SecretKey, Bucket, Region string) Option {
+func WithS3(Address, AccessKey, SecretKey, Bucket, Region string, Secure bool) Option {
 	return s3Option{
 		Address:   Address,
 		AccessKey: AccessKey,
 		SecretKey: SecretKey,
 		Bucket:    Bucket,
 		Region:    Region,
+		Secure:    Secure,
 	}
 }
 

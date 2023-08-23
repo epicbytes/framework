@@ -3,8 +3,13 @@ package framework
 import (
 	"context"
 	"github.com/epicbytes/framework/storage/mongodb"
+	"net"
 	"sync"
 )
+
+type HTTPListenServer interface {
+	Listen(network, address string) (net.Listener, error)
+}
 
 type Service interface {
 	GetModel(name mongodb.CollectionName) mongodb.Model

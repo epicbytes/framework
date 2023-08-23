@@ -3,12 +3,15 @@ package framework
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/casbin/casbin/v2"
 	"github.com/casbin/casbin/v2/model"
+	defaultrolemanager "github.com/casbin/casbin/v2/rbac/default-role-manager"
 	"github.com/casbin/mongodb-adapter/v3"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/epicbytes/framework/bus"
 	"github.com/epicbytes/framework/config"
+	http3 "github.com/epicbytes/framework/http"
 	mqtt3 "github.com/epicbytes/framework/pubsub/mqtt"
 	redis2 "github.com/epicbytes/framework/pubsub/redis"
 	"github.com/epicbytes/framework/runtime"
@@ -18,6 +21,9 @@ import (
 	"github.com/epicbytes/framework/tasks"
 	"github.com/go-redis/redis/v8"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/goccy/go-json"
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/template/html/v2"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"go.mongodb.org/mongo-driver/bson"
@@ -26,6 +32,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
+	"html/template"
 	"net/http"
 	"sync"
 	"time"
@@ -40,12 +47,14 @@ type frmwrk struct {
 	ctx                 context.Context
 	OnStartup           func(ctx context.Context)
 	OnFinish            func(ctx context.Context)
+	OnHTTPStartup       func(ctx context.Context, app *fiber.App)
 	config              *config.Config
 	Models              sync.Map
 	Stores              map[mongodb.CollectionName]*sync.Map
 	TaskManagers        sync.Map
 	Workers             sync.Map
 	GRPCClients         sync.Map
+	httpServer          *fiber.App
 	InternalGRPCClients sync.Map
 	PubSub              *redis.Client
 	MqttClient          mqtt.Client
@@ -55,6 +64,7 @@ type frmwrk struct {
 	TGBot               *tgbotapi.BotAPI
 	S3                  s3.MinioStorageInt
 	enforcer            *casbin.Enforcer
+	tasksRuntime        []runtime.Service
 }
 
 type Framework interface {
@@ -81,6 +91,8 @@ type Framework interface {
 	MQTTPublish(topic string, obj interface{})
 	GetS3Client() s3.MinioStorageInt
 	GetEnforcer() *casbin.Enforcer
+	SetHTTPServer(server *fiber.App)
+	GetHTTPServer() *fiber.App
 }
 
 type ForGateway interface {
@@ -110,6 +122,14 @@ func (f *frmwrk) OnMongoReplication(fn func(ctx context.Context, replicationEven
 		data := message.(mongodb.ReplicationEvent)
 		fn(f.ctx, data)
 	})
+}
+
+func (f *frmwrk) SetHTTPServer(server *fiber.App) {
+	f.httpServer = server
+}
+
+func (f *frmwrk) GetHTTPServer() *fiber.App {
+	return f.httpServer
 }
 
 func (f *frmwrk) RegisterGRPCServer(server http.Handler, path string, middlewares ...func(handler http.Handler) http.Handler) {
@@ -231,20 +251,27 @@ func (f *frmwrk) GetS3Client() s3.MinioStorageInt {
 // Run main livecycle
 func (f *frmwrk) Run() error {
 
-	var tasksRuntime []runtime.Service
-
-	if len(f.config.Server.Addr) > 0 {
-		tasksRuntime = append(tasksRuntime, &service.GRPCService{
-			GrpcMultiplexer: f.grpcRoutes,
-			Config:          f.config,
+	if len(f.config.Redis.URI) > 0 {
+		redisClient := &redis2.RedisClient{
+			URI:      f.config.Redis.URI,
+			Password: f.config.Redis.Password,
+		}
+		redisClient.OnConnect(func(ctx context.Context, client *redis.Client) error {
+			f.PubSub = client
+			return nil
 		})
+		f.tasksRuntime = append(f.tasksRuntime, redisClient)
 	}
 
-	if len(f.config.Server.InternalAddr) > 0 {
-		tasksRuntime = append(tasksRuntime, &service.GRPCInternalService{
-			GrpcInternalMultiplexer: f.grpcInternalRoutes,
-			Config:                  f.config,
+	if len(f.config.MQTTClient.URI) > 0 {
+		mqttClient := &mqtt3.MQTTClient{
+			Config: f.config,
+		}
+		mqttClient.OnConnect(func(ctx context.Context, client mqtt.Client) error {
+			f.MqttClient = client
+			return nil
 		})
+		f.tasksRuntime = append(f.tasksRuntime, mqttClient)
 	}
 
 	if len(f.config.Mongo.URI) > 0 {
@@ -258,17 +285,32 @@ func (f *frmwrk) Run() error {
 				Timeout:        0,
 				IsFiltered:     false,
 			})
+
 			if err != nil {
 				return err
 			}
-			mdl, err := model.NewModelFromString("[request_definition]\nr = sub, obj, act\n\n[policy_definition]\np = sub, obj, act\n\n[policy_effect]\ne = some(where (p.eft == allow))\n\n[matchers]\nm = r.sub == p.sub && r.obj == p.obj && r.act == p.act")
+			f.enforcer.SetAdapter(adapter)
+			f.enforcer.SetRoleManager(defaultrolemanager.NewRoleManager(2))
+			err = f.enforcer.LoadPolicy()
 			if err != nil {
 				return err
 			}
-			f.enforcer, err = casbin.NewEnforcer(mdl, adapter)
+			//f.enforcer.AddPolicy("123", "auth-service", "GetListService")
+			//f.enforcer.AddNamedMatchingFunc("g", "admin", util.KeyMatch)
+			/*user, err := f.enforcer.AddRoleForUser("123", "admin", "default")
 			if err != nil {
+
+				fmt.Println(err)
 				return err
 			}
+			fmt.Println(user)
+			err = f.enforcer.SavePolicy()
+			if err != nil {
+				fmt.Println(err)
+				return err
+			}*/
+			//fmt.Println("enforcer", f.enforcer.GetAllObjects())
+
 			for _, entity := range f.config.Mongo.Entities {
 				f.Models.Store(entity.Collection.String(), mongodb.New(client, f.config.Mongo.DatabaseName, entity.Collection))
 				if entity.WithMemstore {
@@ -336,48 +378,47 @@ func (f *frmwrk) Run() error {
 			}
 			return nil
 		})
-		tasksRuntime = append(tasksRuntime, mongoClient)
+		f.tasksRuntime = append(f.tasksRuntime, mongoClient)
 	}
 
-	if len(f.config.Redis.URI) > 0 {
-		redisClient := &redis2.RedisClient{
-			URI:      f.config.Redis.URI,
-			Password: f.config.Redis.Password,
-		}
-		redisClient.OnConnect(func(ctx context.Context, client *redis.Client) error {
-			f.PubSub = client
-			return nil
-		})
-		tasksRuntime = append(tasksRuntime, redisClient)
-	}
-
-	if len(f.config.S3.Address) > 0 {
-		s3Client := &s3.MinioStorage{Config: f.config}
-		f.S3 = s3Client
-		tasksRuntime = append(tasksRuntime, s3Client)
-	}
-
-	if len(f.config.MQTTClient.URI) > 0 {
-		mqttClient := &mqtt3.MQTTClient{
+	if len(f.config.HttpServer.Addr) > 0 {
+		httpServerTask := &http3.HTTPService{
 			Config: f.config,
 		}
-		mqttClient.OnConnect(func(ctx context.Context, client mqtt.Client) error {
-			f.MqttClient = client
-			return nil
+		httpServerTask.SetServer(f.httpServer)
+		f.tasksRuntime = append(f.tasksRuntime, httpServerTask)
+	}
+
+	if len(f.config.Server.Addr) > 0 {
+		f.tasksRuntime = append(f.tasksRuntime, &service.GRPCService{
+			GrpcMultiplexer: f.grpcRoutes,
+			Config:          f.config,
 		})
-		tasksRuntime = append(tasksRuntime, mqttClient)
+	}
+
+	if len(f.config.Server.InternalAddr) > 0 {
+		f.tasksRuntime = append(f.tasksRuntime, &service.GRPCInternalService{
+			GrpcInternalMultiplexer: f.grpcInternalRoutes,
+			Config:                  f.config,
+		})
 	}
 
 	var keeper = runtime.TaskKeeper{
-		Tasks:           tasksRuntime,
+		Tasks:           f.tasksRuntime,
 		ShutdownTimeout: time.Second * 10,
 		PingPeriod:      time.Millisecond * 500,
 	}
 	var app = runtime.Application{
 		MainFunc: func(ctx context.Context, halt <-chan struct{}) error {
 			var errShutdown = make(chan error, 1)
-			f.OnStartup(f.ctx)
-			defer f.OnFinish(f.ctx)
+			if f.OnStartup != nil {
+				f.OnStartup(f.ctx)
+			}
+			defer func() {
+				if f.OnFinish != nil {
+					f.OnFinish(f.ctx)
+				}
+			}()
 			go func() {
 				defer close(errShutdown)
 				select {
@@ -408,6 +449,46 @@ func New(cfg *config.Config) (framework Framework) {
 			Stores: map[mongodb.CollectionName]*sync.Map{},
 		}
 	)
+	mdl, err := model.NewModelFromString("[request_definition]\nr = sub, obj, act\n\n[policy_definition]\np = sub, obj, act\n\n[policy_effect]\ne = some(where (p.eft == allow))\n\n[matchers]\nm = r.sub == p.sub && r.obj == p.obj && r.act == p.act")
+	if err != nil {
+		log.Error().Err(err)
+	}
+	frm.enforcer, err = casbin.NewEnforcer(mdl)
+
+	if err != nil {
+		log.Error().Err(err)
+	}
+
+	fiberConfig := fiber.Config{
+		JSONEncoder:       json.Marshal,
+		JSONDecoder:       json.Unmarshal,
+		PassLocalsToViews: true,
+	}
+	if len(frm.config.S3.Address) > 0 {
+		frm.S3 = &s3.MinioStorage{Config: frm.config}
+		err := frm.S3.Init(ctx)
+		if err != nil {
+			fmt.Println(err)
+		}
+		engine := html.NewFileSystem(frm.S3, ".html")
+		//engine.Reload(true)
+		engine.Delims("[[", "]]")
+		engine.Layout("/layout/main/index.html")
+		engine.Funcmap = map[string]interface{}{
+			"marshal": func(v interface{}) template.JS {
+				a, _ := json.Marshal(v)
+				return template.JS(a)
+			},
+		}
+
+		if engine != nil {
+			fiberConfig.Views = engine
+		}
+	}
+
+	app := fiber.New(fiberConfig)
+
+	frm.httpServer = app
 
 	if frm.config.Temporal.URI != "" {
 		for _, ns := range frm.config.Temporal.Namespaces {
@@ -424,9 +505,7 @@ func New(cfg *config.Config) (framework Framework) {
 		if err != nil {
 			panic(err)
 		}
-
 		frm.TGBot = tbot
-
 		frm.TGBot.Debug = true
 
 	}
