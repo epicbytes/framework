@@ -45,7 +45,7 @@ type Object struct {
 func NewMinioStorage(config *S3Option) MinioStorage {
 	minioClient, err := minio.New(config.Address, &minio.Options{
 		Creds:  credentials.NewStaticV4(config.AccessKey, config.SecretKey, ""),
-		Secure: false,
+		Secure: true,
 		Region: config.Region,
 	})
 	if err != nil {
