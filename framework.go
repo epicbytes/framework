@@ -3,27 +3,32 @@ package framework
 import (
 	"context"
 	"errors"
+	"github.com/casbin/casbin/v2"
+	"github.com/casbin/casbin/v2/model"
+	"github.com/casbin/mongodb-adapter/v3"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/epicbytes/framework/bus"
 	"github.com/epicbytes/framework/config"
-	mqtt2 "github.com/epicbytes/framework/mqtt"
-	redisPS "github.com/epicbytes/framework/pubsub/redis"
+	mqtt3 "github.com/epicbytes/framework/pubsub/mqtt"
+	redis2 "github.com/epicbytes/framework/pubsub/redis"
+	"github.com/epicbytes/framework/runtime"
 	"github.com/epicbytes/framework/s3"
+	"github.com/epicbytes/framework/service"
 	"github.com/epicbytes/framework/storage/mongodb"
 	"github.com/epicbytes/framework/tasks"
 	"github.com/go-redis/redis/v8"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/rs/cors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
-	"golang.org/x/sync/errgroup"
-	"net"
 	"net/http"
 	"sync"
+	"time"
 )
 
 const (
@@ -33,10 +38,9 @@ const (
 
 type frmwrk struct {
 	ctx                 context.Context
-	onStartup           func(ctx context.Context)
-	onShutdown          func(ctx context.Context)
+	OnStartup           func(ctx context.Context)
+	OnFinish            func(ctx context.Context)
 	config              *config.Config
-	databaseClient      *mongo.Client
 	Models              sync.Map
 	Stores              map[mongodb.CollectionName]*sync.Map
 	TaskManagers        sync.Map
@@ -47,15 +51,16 @@ type frmwrk struct {
 	MqttClient          mqtt.Client
 	Gateway             BaseGateway
 	grpcRoutes          *http.ServeMux
-	internalGrpcRoutes  *http.ServeMux
+	grpcInternalRoutes  *http.ServeMux
 	TGBot               *tgbotapi.BotAPI
-	S3                  s3.MinioStorage
+	S3                  s3.MinioStorageInt
+	enforcer            *casbin.Enforcer
 }
 
 type Framework interface {
 	Run() error
-	OnStartup(fn func(ctx context.Context))
-	OnFinish(fn func(ctx context.Context))
+	SetOnStartup(fn func(ctx context.Context))
+	SetOnFinish(fn func(ctx context.Context))
 	OnMongoReplicationModelStart(fn func(ctx context.Context, data mongodb.ReplicationEvent))
 	OnMongoReplication(fn func(ctx context.Context, data mongodb.ReplicationEvent))
 	RegisterGRPCServer(server http.Handler, path string, middlewares ...func(handler http.Handler) http.Handler)
@@ -64,8 +69,8 @@ type Framework interface {
 	GetConfig() *config.Config
 	GetModel(name mongodb.CollectionName) mongodb.Model
 	GetStore(name mongodb.CollectionName) *sync.Map
-	GetTaskManager(name string) client.Client
-	RegisterWorker(namespace string, queue string, options worker.Options, onCreate func(wrk worker.Worker))
+	GetTaskManager(name string) (client.Client, error)
+	RegisterWorker(namespace string, queue string, options worker.Options, onCreate func(wrk worker.Worker)) error
 	RegisterGRPCClient(clientName string, client interface{})
 	RegisterInternalGRPCClient(clientName string, client interface{})
 	GetGRPCClient(name string) interface{}
@@ -74,7 +79,8 @@ type Framework interface {
 	GetMQTTClient() mqtt.Client
 	GetTGBot() *tgbotapi.BotAPI
 	MQTTPublish(topic string, obj interface{})
-	GetS3Client() s3.MinioStorage
+	GetS3Client() s3.MinioStorageInt
+	GetEnforcer() *casbin.Enforcer
 }
 
 type ForGateway interface {
@@ -84,12 +90,12 @@ type ForGateway interface {
 	GetTaskManager(name string) client.Client
 }
 
-func (f *frmwrk) OnStartup(fn func(ctx context.Context)) {
-	fn(f.ctx)
+func (f *frmwrk) SetOnStartup(fn func(ctx context.Context)) {
+	f.OnStartup = fn
 }
 
-func (f *frmwrk) OnFinish(fn func(ctx context.Context)) {
-	fn(f.ctx)
+func (f *frmwrk) SetOnFinish(fn func(ctx context.Context)) {
+	f.OnFinish = fn
 }
 
 func (f *frmwrk) OnMongoReplicationModelStart(fn func(ctx context.Context, data mongodb.ReplicationEvent)) {
@@ -117,14 +123,14 @@ func (f *frmwrk) RegisterGRPCServer(server http.Handler, path string, middleware
 }
 
 func (f *frmwrk) RegisterInternalGRPCServer(server http.Handler, path string, middlewares ...func(handler http.Handler) http.Handler) {
-	if f.internalGrpcRoutes == nil {
-		f.internalGrpcRoutes = http.NewServeMux()
+	if f.grpcInternalRoutes == nil {
+		f.grpcInternalRoutes = http.NewServeMux()
 	}
 	hnd := server
 	for _, middleware := range middlewares {
 		hnd = middleware(hnd)
 	}
-	f.internalGrpcRoutes.Handle(path, hnd)
+	f.grpcInternalRoutes.Handle(path, hnd)
 }
 
 func (f *frmwrk) RegisterNetListener(server BaseGateway) {
@@ -139,15 +145,23 @@ func (f *frmwrk) RegisterInternalGRPCClient(clientName string, client interface{
 	f.InternalGRPCClients.Store(clientName, client)
 }
 
-func (f *frmwrk) RegisterWorker(namespace string, queue string, options worker.Options, fn func(wrk worker.Worker)) {
-	cl := f.GetTaskManager(namespace)
+func (f *frmwrk) RegisterWorker(namespace string, queue string, options worker.Options, fn func(wrk worker.Worker)) error {
+	cl, err := f.GetTaskManager(namespace)
+	if err != nil {
+		return err
+	}
 	wrk := worker.New(cl, queue, options)
 	fn(wrk)
 	f.Workers.Store(namespace+"-"+queue, wrk)
+	return nil
 }
 
 func (f *frmwrk) GetContext() context.Context {
 	return f.ctx
+}
+
+func (f *frmwrk) GetEnforcer() *casbin.Enforcer {
+	return f.enforcer
 }
 
 func (f *frmwrk) GetMQTTClient() mqtt.Client {
@@ -156,7 +170,7 @@ func (f *frmwrk) GetMQTTClient() mqtt.Client {
 
 func (f *frmwrk) MQTTPublish(topic string, obj interface{}) {
 	if f.MqttClient != nil {
-		f.MqttClient.Publish(topic, 0, false, mqtt2.ConvertForMQTT(obj))
+		f.MqttClient.Publish(topic, 0, false, mqtt3.ConvertForMQTT(obj))
 	}
 }
 
@@ -165,11 +179,11 @@ func (f *frmwrk) GetConfig() *config.Config {
 }
 
 func (f *frmwrk) GetModel(name mongodb.CollectionName) mongodb.Model {
-	model, ok := f.Models.Load(name.String())
+	mdl, ok := f.Models.Load(name.String())
 	if !ok {
 		return nil
 	}
-	return model.(mongodb.Model)
+	return mdl.(mongodb.Model)
 }
 
 func (f *frmwrk) GetGRPCClient(name string) interface{} {
@@ -198,194 +212,190 @@ func (f *frmwrk) GetStore(name mongodb.CollectionName) *sync.Map {
 	return store
 }
 
-func (f *frmwrk) GetTaskManager(name string) client.Client {
-	model, ok := f.TaskManagers.Load(name)
+func (f *frmwrk) GetTaskManager(name string) (client.Client, error) {
+	tsk, ok := f.TaskManagers.Load(name)
 	if !ok {
-		return nil
+		return nil, errors.New("task manager is not connected")
 	}
-	return model.(client.Client)
+	return tsk.(client.Client), nil
 }
 
 func (f *frmwrk) GetTGBot() *tgbotapi.BotAPI {
 	return f.TGBot
 }
 
-func (f *frmwrk) GetS3Client() s3.MinioStorage {
+func (f *frmwrk) GetS3Client() s3.MinioStorageInt {
 	return f.S3
 }
 
 // Run main livecycle
 func (f *frmwrk) Run() error {
-	wg, _ := errgroup.WithContext(context.Background())
 
-	defer func() {
-		if f.MqttClient != nil && f.MqttClient.IsConnected() {
-			defer f.MqttClient.Disconnect(0)
-		}
-		if f.onShutdown != nil {
-			f.onShutdown(f.ctx)
-		}
-	}()
+	var tasksRuntime []runtime.Service
 
-	if f.config.Redis.URI != "" {
-		f.PubSub = redisPS.New(f.config)
-	}
-
-	if f.config.S3.Address != "" {
-		f.S3 = s3.NewMinioStorage(&s3.S3Option{
-			Address:   f.config.S3.Address,
-			AccessKey: f.config.S3.AccessKey,
-			SecretKey: f.config.S3.SecretKey,
-			Bucket:    f.config.S3.Bucket,
-			Region:    f.config.S3.Region,
+	if len(f.config.Server.Addr) > 0 {
+		tasksRuntime = append(tasksRuntime, &service.GRPCService{
+			GrpcMultiplexer: f.grpcRoutes,
+			Config:          f.config,
 		})
 	}
 
-	if f.config.Mongo.URI != "" {
-		cl, err := mongodb.NewClient(f.ctx, f.config.Mongo.URI)
-		if err != nil {
-			return err
-		}
-		defer cl.Disconnect(f.ctx)
-		for _, entity := range f.config.Mongo.Entities {
-			f.Models.Store(entity.Collection.String(), mongodb.New(cl, f.config.Mongo.DatabaseName, entity.Collection))
-			if entity.WithMemstore {
-				f.Stores[entity.Collection] = &sync.Map{}
-			}
-		}
-	}
-
-	if f.onStartup != nil {
-		f.onStartup(f.ctx)
-	}
-
-	if f.Gateway != nil {
-		f.Gateway.SetFramework(f)
-		wg.Go(func() error {
-			if f.config.Gateway.Addr == "" {
-				log.Info().Msg("Stack started")
-			} else {
-				log.Info().Msgf("Gateway started at %s\n", f.config.Gateway.Addr)
-			}
-			f.Gateway.Start(f.ctx)
-			return nil
+	if len(f.config.Server.InternalAddr) > 0 {
+		tasksRuntime = append(tasksRuntime, &service.GRPCInternalService{
+			GrpcInternalMultiplexer: f.grpcInternalRoutes,
+			Config:                  f.config,
 		})
 	}
-	for _, entity := range f.config.Mongo.Entities {
-		if !entity.WithMemstore && !entity.WithReplication {
-			continue
-		}
-		mdl, ok := f.Models.Load(entity.Collection.String())
-		if !ok {
-			return errors.New("replication: model is not set")
-		}
 
-		cursor, err := mdl.(mongodb.Model).GetCollection().Find(f.ctx, bson.M{})
-		if err != nil {
-			return err
+	if len(f.config.Mongo.URI) > 0 {
+		mongoClient := &mongodb.MongoClient{
+			URI: f.config.Mongo.URI,
 		}
-		var results []bson.M
-		if err = cursor.All(context.TODO(), &results); err != nil {
-			log.Error().Err(err)
-		}
-		for _, result := range results {
-			data, _ := bson.Marshal(result)
-			bus.Ring(listenerReplicationStarted, mongodb.ReplicationEvent{
-				Type:           mongodb.ReplicationEventInsert,
-				CollectionName: entity.Collection,
-				Data:           data,
+		mongoClient.OnConnect(func(ctx context.Context, client *mongo.Client) error {
+			adapter, err := mongodbadapter.NewAdapterByDB(client, &mongodbadapter.AdapterConfig{
+				DatabaseName:   f.config.Mongo.DatabaseName,
+				CollectionName: "authorization",
+				Timeout:        0,
+				IsFiltered:     false,
 			})
+			if err != nil {
+				return err
+			}
+			mdl, err := model.NewModelFromString("[request_definition]\nr = sub, obj, act\n\n[policy_definition]\np = sub, obj, act\n\n[policy_effect]\ne = some(where (p.eft == allow))\n\n[matchers]\nm = r.sub == p.sub && r.obj == p.obj && r.act == p.act")
+			if err != nil {
+				return err
+			}
+			f.enforcer, err = casbin.NewEnforcer(mdl, adapter)
+			if err != nil {
+				return err
+			}
+			for _, entity := range f.config.Mongo.Entities {
+				f.Models.Store(entity.Collection.String(), mongodb.New(client, f.config.Mongo.DatabaseName, entity.Collection))
+				if entity.WithMemstore {
+					f.Stores[entity.Collection] = &sync.Map{}
+				}
+				if entity.WithReplication {
+					mdl, ok := f.Models.Load(entity.Collection.String())
+					if !ok {
+						return errors.New("replication: model is not set")
+					}
+					log.Debug().Msgf("Start replication for %s", entity.Collection.String())
+					cursor, err := mdl.(mongodb.Model).GetCollection().Find(f.ctx, bson.M{})
+					if err != nil {
+						return err
+					}
+					var results []bson.M
+					if err = cursor.All(context.TODO(), &results); err != nil {
+						log.Error().Err(err)
+					}
+					for _, result := range results {
+						id := result["_id"].(primitive.ObjectID).Hex()
+						data, _ := bson.Marshal(result)
+						bus.Ring(listenerReplicationStarted, mongodb.ReplicationEvent{
+							Id:             id,
+							Type:           mongodb.ReplicationEventInsert,
+							CollectionName: entity.Collection,
+							Data:           data,
+						})
+					}
+
+					go (func() {
+						opts := options.ChangeStream().SetFullDocument("updateLookup")
+						cs, err := mdl.(mongodb.Model).GetCollection().Watch(context.TODO(), entity.ReplicationQuery, opts)
+						if err != nil {
+							log.Error().Err(err)
+							panic(err)
+						}
+						defer cs.Close(context.TODO())
+						for cs.Next(context.TODO()) {
+							event, err := mongodb.WatchEventHandler(cs)
+							if err != nil {
+								log.Error().Err(err)
+								return
+							}
+
+							if err := bus.Ring(listenerReplication, mongodb.ReplicationEvent{
+								Id:             event.ID,
+								Type:           event.OperationType,
+								CollectionName: entity.Collection,
+								Data:           event.Data,
+							}); err != nil {
+								log.Error().Err(err)
+								return
+							}
+
+							log.Printf("Event: %s, %s", event.ID, event.Collection)
+						}
+						if err := cs.Err(); err != nil {
+							log.Error().Err(err)
+							return
+						}
+						return
+					})()
+				}
+			}
+			return nil
+		})
+		tasksRuntime = append(tasksRuntime, mongoClient)
+	}
+
+	if len(f.config.Redis.URI) > 0 {
+		redisClient := &redis2.RedisClient{
+			URI:      f.config.Redis.URI,
+			Password: f.config.Redis.Password,
 		}
+		redisClient.OnConnect(func(ctx context.Context, client *redis.Client) error {
+			f.PubSub = client
+			return nil
+		})
+		tasksRuntime = append(tasksRuntime, redisClient)
+	}
 
-		wg.Go(func() error {
-			cs, err := mdl.(mongodb.Model).GetCollection().Watch(context.TODO(), entity.ReplicationQuery)
-			if err != nil {
-				panic(err)
-			}
-			defer cs.Close(context.TODO())
-			for cs.Next(context.TODO()) {
-				event, err := mongodb.WatchEventHandler(cs)
-				if err != nil {
-					return err
+	if len(f.config.S3.Address) > 0 {
+		s3Client := &s3.MinioStorage{Config: f.config}
+		f.S3 = s3Client
+		tasksRuntime = append(tasksRuntime, s3Client)
+	}
+
+	if len(f.config.MQTTClient.URI) > 0 {
+		mqttClient := &mqtt3.MQTTClient{
+			Config: f.config,
+		}
+		mqttClient.OnConnect(func(ctx context.Context, client mqtt.Client) error {
+			f.MqttClient = client
+			return nil
+		})
+		tasksRuntime = append(tasksRuntime, mqttClient)
+	}
+
+	var keeper = runtime.TaskKeeper{
+		Tasks:           tasksRuntime,
+		ShutdownTimeout: time.Second * 10,
+		PingPeriod:      time.Millisecond * 500,
+	}
+	var app = runtime.Application{
+		MainFunc: func(ctx context.Context, halt <-chan struct{}) error {
+			var errShutdown = make(chan error, 1)
+			f.OnStartup(f.ctx)
+			defer f.OnFinish(f.ctx)
+			go func() {
+				defer close(errShutdown)
+				select {
+				case <-halt:
+				case <-ctx.Done():
+
 				}
-
-				if err := bus.Ring(listenerReplication, mongodb.ReplicationEvent{
-					Type:           event.OperationType,
-					CollectionName: entity.Collection,
-					Data:           event.Data,
-				}); err != nil {
-					return err
-				}
-
-				log.Printf("Event: %s, %s, %s", event.ID, event.Collection, event.Data)
-			}
-			if err := cs.Err(); err != nil {
+			}()
+			err, ok := <-errShutdown
+			if ok {
 				return err
 			}
 			return nil
-		})
+		},
+		Resources:          &keeper,
+		TerminationTimeout: time.Second * 10,
 	}
-	if f.grpcRoutes != nil {
-		wg.Go(func() error {
-			corsWrapper := cors.New(cors.Options{
-				AllowedMethods: []string{
-					http.MethodGet,
-					http.MethodPost,
-				},
-				AllowedOrigins: []string{"*"},
-				AllowedHeaders: []string{
-					"Accept-Encoding",
-					"Content-Encoding",
-					"Content-Type",
-					"Connect-Protocol-Version",
-					"Connect-Timeout-Ms",
-					"Connect-Accept-Encoding",  // Unused in web browsers, but added for future-proofing
-					"Connect-Content-Encoding", // Unused in web browsers, but added for future-proofing
-					"Grpc-Timeout",             // Used for gRPC-web
-					"X-Grpc-Web",               // Used for gRPC-web
-					"X-User-Agent",             // Used for gRPC-web
-				},
-				ExposedHeaders: []string{
-					"Content-Encoding",         // Unused in web browsers, but added for future-proofing
-					"Connect-Content-Encoding", // Unused in web browsers, but added for future-proofing
-					"Grpc-Status",              // Required for gRPC-web
-					"Grpc-Message",             // Required for gRPC-web
-				},
-			})
-			log.Info().Msgf("GRPC server started at %s", f.config.Server.Addr)
-			server := http.Server{Addr: f.config.Server.Addr, Handler: corsWrapper.Handler(f.grpcRoutes)}
-			lnr, err := net.Listen("tcp4", server.Addr)
-			if err != nil {
-				return err
-			}
-			return server.Serve(lnr)
-		})
-	}
-
-	if f.internalGrpcRoutes != nil {
-		wg.Go(func() error {
-			log.Info().Msgf("INTERNAL GRPC server started at %s", f.config.Server.InternalAddr)
-			server := http.Server{Addr: f.config.Server.InternalAddr, Handler: f.internalGrpcRoutes}
-			lnr, err := net.Listen("tcp4", server.Addr)
-			if err != nil {
-				return err
-			}
-			return server.Serve(lnr)
-		})
-	}
-
-	f.Workers.Range(func(key, value any) bool {
-		wg.Go(func() error {
-			err := value.(worker.Worker).Run(worker.InterruptCh())
-			if err != nil {
-				return err
-			}
-			return nil
-		})
-		return true
-	})
-
-	return wg.Wait()
+	return app.Run()
 }
 
 func New(cfg *config.Config) (framework Framework) {
@@ -398,21 +408,6 @@ func New(cfg *config.Config) (framework Framework) {
 			Stores: map[mongodb.CollectionName]*sync.Map{},
 		}
 	)
-
-	if frm.config.MQTTClient.URI != "" {
-		mqtOpt := mqtt.NewClientOptions()
-		mqtOpt.AddBroker("tcp://" + frm.config.MQTTClient.URI)
-		//mqtOpt.SetDefaultPublishHandler(messagePubHandler)
-		mqtOpt.SetUsername(frm.config.MQTTClient.Username)
-		mqtOpt.SetPassword(frm.config.MQTTClient.Password)
-		mqtOpt.SetClientID(frm.config.MQTTClient.ClientId)
-		mqClient := mqtt.NewClient(mqtOpt)
-		if token := mqClient.Connect(); token.Wait() && token.Error() != nil {
-			log.Error().Err(token.Error())
-		}
-
-		frm.MqttClient = mqClient
-	}
 
 	if frm.config.Temporal.URI != "" {
 		for _, ns := range frm.config.Temporal.Namespaces {

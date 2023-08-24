@@ -35,13 +35,14 @@ func (r ReplicationEventType) String() string {
 }
 
 type ReplicationEvent struct {
+	Id             string
 	Type           ReplicationEventType
 	CollectionName CollectionName
 	Data           []byte
 }
 
 func (r *ReplicationEvent) Decode(object interface{}) error {
-	return bson.Unmarshal(r.Data, object)
+	return json.Unmarshal(r.Data, object)
 }
 
 type ModelEntity struct {

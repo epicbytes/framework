@@ -3,17 +3,19 @@ package s3
 import (
 	"bytes"
 	"context"
+	"github.com/epicbytes/framework/config"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
+	"github.com/rs/zerolog/log"
 	"io"
-	"log"
-	"sync"
+	"net/url"
 	"time"
 )
 
-type MinioStorage interface {
+type MinioStorageInt interface {
 	GetBuckets(ctx context.Context) ([]minio.BucketInfo, error)
 	GetLink(key string) string
+	PresignedPutObject(ctx context.Context, key string, expires time.Duration) (*url.URL, error)
 	PutObject(ctx context.Context, key string, object io.Reader, length int64, contentType string) (minio.UploadInfo, error)
 	FPutObject(ctx context.Context, key string, path string, contentType string) (minio.UploadInfo, error)
 	GetObject(ctx context.Context, key string) ([]byte, error)
@@ -29,10 +31,10 @@ type S3Option struct {
 	Region    string `env:"REGION"`
 }
 
-type minioStorage struct {
-	mu     sync.Mutex
+type MinioStorage struct {
 	s3     *minio.Client
-	config *S3Option
+	Config *config.Config
+	bucket string
 }
 
 type Object struct {
@@ -42,23 +44,30 @@ type Object struct {
 	UpdatedAt   time.Time
 }
 
-func NewMinioStorage(config *S3Option) MinioStorage {
-	minioClient, err := minio.New(config.Address, &minio.Options{
-		Creds:  credentials.NewStaticV4(config.AccessKey, config.SecretKey, ""),
-		Secure: false,
-		Region: config.Region,
+func (s *MinioStorage) Init(ctx context.Context) error {
+	log.Debug().Msg("INITIAL S3")
+	minioClient, err := minio.New(s.Config.S3.Address, &minio.Options{
+		Creds:  credentials.NewStaticV4(s.Config.S3.AccessKey, s.Config.S3.SecretKey, ""),
+		Secure: true,
+		Region: s.Config.S3.Region,
 	})
 	if err != nil {
-		log.Fatalln(err)
+		log.Error().Err(err)
+		return err
 	}
+	s.s3 = minioClient
+	s.bucket = s.Config.S3.Bucket
 
-	return &minioStorage{
-		config: config,
-		s3:     minioClient,
-	}
+	return nil
+}
+func (s *MinioStorage) Ping(context.Context) error {
+	return nil
+}
+func (s *MinioStorage) Close() error {
+	return nil
 }
 
-func (s *minioStorage) GetBuckets(ctx context.Context) ([]minio.BucketInfo, error) {
+func (s *MinioStorage) GetBuckets(ctx context.Context) ([]minio.BucketInfo, error) {
 	buckets, err := s.s3.ListBuckets(ctx)
 	if err != nil {
 		return nil, err
@@ -66,30 +75,34 @@ func (s *minioStorage) GetBuckets(ctx context.Context) ([]minio.BucketInfo, erro
 	return buckets, nil
 }
 
-func (s *minioStorage) GetLink(key string) string {
+func (s *MinioStorage) GetLink(key string) string {
 	if key == "" {
 		return ""
 	}
 	sb := bytes.NewBufferString("https://")
-	sb.WriteString(s.config.Address)
+	sb.WriteString(s.Config.S3.Address)
 	sb.WriteString("/")
-	sb.WriteString(s.config.Bucket)
+	sb.WriteString(s.bucket)
 	sb.WriteString("/")
 	sb.WriteString(key)
 
 	return sb.String()
 }
 
-func (s *minioStorage) PutObject(ctx context.Context, key string, object io.Reader, length int64, contentType string) (minio.UploadInfo, error) {
-	return s.s3.PutObject(ctx, s.config.Bucket, key, object, length, minio.PutObjectOptions{ContentType: contentType})
+func (s *MinioStorage) PresignedPutObject(ctx context.Context, key string, expires time.Duration) (*url.URL, error) {
+	return s.s3.PresignedPutObject(ctx, s.bucket, key, expires)
 }
 
-func (s *minioStorage) FPutObject(ctx context.Context, key string, path string, contentType string) (minio.UploadInfo, error) {
-	return s.s3.FPutObject(ctx, s.config.Bucket, key, path, minio.PutObjectOptions{ContentType: contentType})
+func (s *MinioStorage) PutObject(ctx context.Context, key string, object io.Reader, length int64, contentType string) (minio.UploadInfo, error) {
+	return s.s3.PutObject(ctx, s.bucket, key, object, length, minio.PutObjectOptions{ContentType: contentType})
 }
 
-func (s *minioStorage) GetObject(ctx context.Context, key string) ([]byte, error) {
-	result, err := s.s3.GetObject(ctx, s.config.Bucket, key, minio.GetObjectOptions{})
+func (s *MinioStorage) FPutObject(ctx context.Context, key string, path string, contentType string) (minio.UploadInfo, error) {
+	return s.s3.FPutObject(ctx, s.bucket, key, path, minio.PutObjectOptions{ContentType: contentType})
+}
+
+func (s *MinioStorage) GetObject(ctx context.Context, key string) ([]byte, error) {
+	result, err := s.s3.GetObject(ctx, s.bucket, key, minio.GetObjectOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -100,13 +113,13 @@ func (s *minioStorage) GetObject(ctx context.Context, key string) ([]byte, error
 	return data, nil
 }
 
-func (s *minioStorage) ListObjects(ctx context.Context, prefix string) ([]*Object, error) {
+func (s *MinioStorage) ListObjects(ctx context.Context, prefix string) ([]*Object, error) {
 	opts := minio.ListObjectsOptions{
 		Recursive: true,
 		Prefix:    prefix,
 	}
 	var objs []*Object
-	for object := range s.s3.ListObjects(ctx, s.config.Bucket, opts) {
+	for object := range s.s3.ListObjects(ctx, s.bucket, opts) {
 		if object.Err != nil {
 			return nil, object.Err
 		}
@@ -120,9 +133,9 @@ func (s *minioStorage) ListObjects(ctx context.Context, prefix string) ([]*Objec
 	return objs, nil
 }
 
-func (s *minioStorage) RemoveObject(ctx context.Context, objectName string) error {
+func (s *MinioStorage) RemoveObject(ctx context.Context, objectName string) error {
 	opts := minio.RemoveObjectOptions{
 		GovernanceBypass: true,
 	}
-	return s.s3.RemoveObject(ctx, s.config.Bucket, objectName, opts)
+	return s.s3.RemoveObject(ctx, s.bucket, objectName, opts)
 }
