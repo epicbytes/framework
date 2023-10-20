@@ -403,6 +403,14 @@ func (f *frmwrk) Run() error {
 		})
 	}
 
+	f.Workers.Range(func(key any, value any) bool {
+		f.tasksRuntime = append(f.tasksRuntime, &tasks.TaskWorker{
+			Worker: value.(worker.Worker),
+			Name:   key.(string),
+		})
+		return true
+	})
+
 	var keeper = runtime.TaskKeeper{
 		Tasks:           f.tasksRuntime,
 		ShutdownTimeout: time.Second * 10,

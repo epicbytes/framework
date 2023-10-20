@@ -23,9 +23,9 @@ type GRPCInternalService struct {
 func (t *GRPCInternalService) Init(ctx context.Context) error {
 	t.ctx = ctx
 	log.Debug().Msg("INITIAL GRPC Internal SERVICE")
-	log.Info().Msgf("GRPC internal server started at %s", t.Config.Server.InternalAddr)
-	server := http.Server{Addr: t.Config.Server.InternalAddr, Handler: t.GrpcInternalMultiplexer}
-	lnr, err := net.Listen("tcp4", server.Addr)
+	log.Info().Msgf("GRPC Internal server started at %s", t.Config.Server.InternalAddr)
+	t.server = http.Server{Addr: t.Config.Server.InternalAddr, Handler: t.GrpcInternalMultiplexer}
+	lnr, err := net.Listen("tcp4", t.server.Addr)
 	if err != nil {
 		return err
 	}
