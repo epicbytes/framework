@@ -42,7 +42,7 @@ type ReplicationEvent struct {
 }
 
 func (r *ReplicationEvent) Decode(object interface{}) error {
-	return json.Unmarshal(r.Data, object)
+	return bson.Unmarshal(r.Data, object)
 }
 
 type ModelEntity struct {
