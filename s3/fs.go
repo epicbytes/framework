@@ -3,7 +3,7 @@ package s3
 import (
 	"context"
 	"github.com/minio/minio-go/v7"
-	"log"
+	"github.com/rs/zerolog/log"
 	"os"
 	"strings"
 )
@@ -31,7 +31,7 @@ func getObject(ctx context.Context, s3 *MinioStorage, name string) (*minio.Objec
 	for _, n := range names {
 		obj, err := s3.GetClient().GetObject(ctx, s3.bucket, n, minio.GetObjectOptions{})
 		if err != nil {
-			log.Println(err)
+			log.Info().Err(err).Send()
 			continue
 		}
 
@@ -39,7 +39,7 @@ func getObject(ctx context.Context, s3 *MinioStorage, name string) (*minio.Objec
 		if err != nil {
 			// do not log "file" in bucket not found errors
 			if minio.ToErrorResponse(err).Code != "NoSuchKey" {
-				log.Println(err)
+				log.Info().Err(err).Send()
 			}
 			continue
 		}

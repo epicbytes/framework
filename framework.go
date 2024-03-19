@@ -4,10 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/casbin/casbin/v2"
-	"github.com/casbin/casbin/v2/model"
-	defaultrolemanager "github.com/casbin/casbin/v2/rbac/default-role-manager"
-	"github.com/casbin/mongodb-adapter/v3"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/epicbytes/framework/bus"
 	"github.com/epicbytes/framework/config"
@@ -63,8 +59,8 @@ type frmwrk struct {
 	grpcInternalRoutes  *http.ServeMux
 	TGBot               *tgbotapi.BotAPI
 	S3                  s3.MinioStorageInt
-	enforcer            *casbin.Enforcer
-	tasksRuntime        []runtime.Service
+	//enforcer            *casbin.Enforcer
+	tasksRuntime []runtime.Service
 }
 
 type Framework interface {
@@ -90,7 +86,7 @@ type Framework interface {
 	GetTGBot() *tgbotapi.BotAPI
 	MQTTPublish(topic string, obj interface{})
 	GetS3Client() s3.MinioStorageInt
-	GetEnforcer() *casbin.Enforcer
+	//GetEnforcer() *casbin.Enforcer
 	SetHTTPServer(server *fiber.App)
 	GetHTTPServer() *fiber.App
 }
@@ -180,9 +176,9 @@ func (f *frmwrk) GetContext() context.Context {
 	return f.ctx
 }
 
-func (f *frmwrk) GetEnforcer() *casbin.Enforcer {
-	return f.enforcer
-}
+//func (f *frmwrk) GetEnforcer() *casbin.Enforcer {
+//	return f.enforcer
+//}
 
 func (f *frmwrk) GetMQTTClient() mqtt.Client {
 	return f.MqttClient
@@ -279,22 +275,22 @@ func (f *frmwrk) Run() error {
 			URI: f.config.Mongo.URI,
 		}
 		mongoClient.OnConnect(func(ctx context.Context, client *mongo.Client) error {
-			adapter, err := mongodbadapter.NewAdapterByDB(client, &mongodbadapter.AdapterConfig{
-				DatabaseName:   f.config.Mongo.DatabaseName,
-				CollectionName: "authorization",
-				Timeout:        0,
-				IsFiltered:     false,
-			})
-
-			if err != nil {
-				return err
-			}
-			f.enforcer.SetAdapter(adapter)
-			f.enforcer.SetRoleManager(defaultrolemanager.NewRoleManager(2))
-			err = f.enforcer.LoadPolicy()
-			if err != nil {
-				return err
-			}
+			//adapter, err := mongodbadapter.NewAdapterByDB(client, &mongodbadapter.AdapterConfig{
+			//	DatabaseName:   f.config.Mongo.DatabaseName,
+			//	CollectionName: "authorization",
+			//	Timeout:        0,
+			//	IsFiltered:     false,
+			//})
+			//
+			//if err != nil {
+			//	return err
+			//}
+			//f.enforcer.SetAdapter(adapter)
+			//f.enforcer.SetRoleManager(defaultrolemanager.NewRoleManager(2))
+			//err = f.enforcer.LoadPolicy()
+			//if err != nil {
+			//	return err
+			//}
 			//f.enforcer.AddPolicy("123", "auth-service", "GetListService")
 			//f.enforcer.AddNamedMatchingFunc("g", "admin", util.KeyMatch)
 			/*user, err := f.enforcer.AddRoleForUser("123", "admin", "default")
@@ -457,15 +453,15 @@ func New(cfg *config.Config) (framework Framework) {
 			Stores: map[mongodb.CollectionName]*sync.Map{},
 		}
 	)
-	mdl, err := model.NewModelFromString("[request_definition]\nr = sub, obj, act\n\n[policy_definition]\np = sub, obj, act\n\n[policy_effect]\ne = some(where (p.eft == allow))\n\n[matchers]\nm = r.sub == p.sub && r.obj == p.obj && r.act == p.act")
-	if err != nil {
-		log.Error().Err(err)
-	}
-	frm.enforcer, err = casbin.NewEnforcer(mdl)
+	//mdl, err := model.NewModelFromString("[request_definition]\nr = sub, obj, act\n\n[policy_definition]\np = sub, obj, act\n\n[policy_effect]\ne = some(where (p.eft == allow))\n\n[matchers]\nm = r.sub == p.sub && r.obj == p.obj && r.act == p.act")
+	//if err != nil {
+	//	log.Error().Err(err)
+	//}
+	//frm.enforcer, err = casbin.NewEnforcer(mdl)
 
-	if err != nil {
-		log.Error().Err(err)
-	}
+	//if err != nil {
+	//	log.Error().Err(err)
+	//}
 
 	fiberConfig := fiber.Config{
 		JSONEncoder:       json.Marshal,
