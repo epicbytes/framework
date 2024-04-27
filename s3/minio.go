@@ -61,7 +61,7 @@ func (s *MinioStorage) Init(ctx context.Context) error {
 	log.Debug().Msg("INITIAL S3")
 	u, err := url.Parse(s.Config.S3.Address)
 	if err != nil {
-		log.Error().Err(err)
+		log.Error().Err(err).Send()
 		return err
 	}
 	tlsConfig := &tls.Config{}
@@ -88,7 +88,7 @@ func (s *MinioStorage) Init(ctx context.Context) error {
 	})
 
 	if err != nil {
-		log.Error().Err(err)
+		log.Error().Err(err).Send()
 		return err
 	}
 	s.s3 = minioClient

@@ -15,6 +15,7 @@ func New(address string, namespace string) (client.Client, error) {
 		Logger:    logger,
 	})
 	if err != nil {
+		log.Error().Err(err).Send()
 		return nil, err
 	}
 
@@ -31,7 +32,7 @@ func (t *TaskWorker) Init(context.Context) error {
 	go func() {
 		err := t.Worker.Run(worker.InterruptCh())
 		if err != nil {
-			log.Error().Err(err)
+			log.Error().Err(err).Send()
 			return
 		}
 	}()

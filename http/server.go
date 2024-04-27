@@ -2,7 +2,6 @@ package http
 
 import (
 	"context"
-	"fmt"
 	"github.com/epicbytes/framework/config"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
@@ -44,8 +43,7 @@ func (t *HTTPService) Init(ctx context.Context) error {
 	go func() {
 		err := t.server.Listen(t.Config.HttpServer.Addr)
 		if err != nil {
-			fmt.Print("ERR", err)
-			log.Error().Err(err)
+			log.Error().Err(err).Send()
 			return
 		}
 	}()
@@ -61,6 +59,7 @@ func (t *HTTPService) Close() error {
 	log.Debug().Msg("CLOSE HTTP")
 	err := t.server.Shutdown()
 	if err != nil {
+		log.Error().Err(err).Send()
 		return err
 	}
 	return nil

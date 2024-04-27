@@ -29,6 +29,7 @@ func (t *MongoClient) Init(ctx context.Context) error {
 	if t.onConnect != nil {
 		err = t.onConnect(t.ctx, t.client)
 		if err != nil {
+			log.Error().Err(err).Send()
 			return err
 		}
 	}

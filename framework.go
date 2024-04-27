@@ -3,7 +3,6 @@ package framework
 import (
 	"context"
 	"errors"
-	"fmt"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/epicbytes/framework/bus"
 	"github.com/epicbytes/framework/config"
@@ -205,7 +204,7 @@ func (f *frmwrk) GetModel(name mongodb.CollectionName) mongodb.Model {
 func (f *frmwrk) GetGRPCClient(name string) interface{} {
 	grpcClient, ok := f.GRPCClients.Load(name)
 	if !ok {
-		log.Error().Err(errors.New("can`t load grpc client: " + name))
+		log.Error().Err(errors.New("can`t load grpc client: " + name)).Send()
 		return nil
 	}
 	return grpcClient
@@ -214,7 +213,7 @@ func (f *frmwrk) GetGRPCClient(name string) interface{} {
 func (f *frmwrk) GetInternalGRPCClient(name string) interface{} {
 	internalGRPCClient, ok := f.InternalGRPCClients.Load(name)
 	if !ok {
-		log.Error().Err(errors.New("can`t load grpc client: " + name))
+		log.Error().Err(errors.New("can`t load grpc client: " + name)).Send()
 		return nil
 	}
 	return internalGRPCClient
@@ -472,7 +471,7 @@ func New(cfg *config.Config) (framework Framework) {
 		frm.S3 = &s3.MinioStorage{Config: frm.config}
 		err := frm.S3.Init(ctx)
 		if err != nil {
-			fmt.Println(err)
+			log.Error().Err(err).Send()
 		}
 		engine := html.NewFileSystem(frm.S3, ".html")
 		//engine.Reload(true)
@@ -498,7 +497,7 @@ func New(cfg *config.Config) (framework Framework) {
 		for _, ns := range frm.config.Temporal.Namespaces {
 			tm, err := tasks.New(frm.config.Temporal.URI, ns)
 			if err != nil {
-				log.Error().Err(err)
+				log.Error().Err(err).Send()
 			}
 			frm.TaskManagers.Store(ns, tm)
 		}
