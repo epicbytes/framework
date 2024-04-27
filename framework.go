@@ -491,6 +491,7 @@ func New(cfg *config.Config) (framework Framework) {
 	frm.httpServer = app
 
 	if frm.config.Temporal.URI != "" {
+		log.Debug().Msg("INITIAL TEMPORAL")
 		for _, ns := range frm.config.Temporal.Namespaces {
 			tm, err := tasks.New(frm.config.Temporal.URI, ns)
 			if err != nil {
@@ -501,6 +502,7 @@ func New(cfg *config.Config) (framework Framework) {
 	}
 
 	if frm.config.Telegram.APIToken != "" {
+		log.Debug().Msg("INITIAL TG")
 		tbot, err := tgbotapi.NewBotAPI(frm.config.Telegram.APIToken)
 		if err != nil {
 			panic(err)
