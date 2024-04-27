@@ -18,7 +18,6 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/goccy/go-json"
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/template/html/v2"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"go.mongodb.org/mongo-driver/bson"
@@ -27,7 +26,6 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
-	"html/template"
 	"net/http"
 	"sync"
 	"time"
@@ -463,9 +461,9 @@ func New(cfg *config.Config) (framework Framework) {
 	//}
 
 	fiberConfig := fiber.Config{
-		JSONEncoder:       json.Marshal,
-		JSONDecoder:       json.Unmarshal,
-		PassLocalsToViews: true,
+		JSONEncoder: json.Marshal,
+		JSONDecoder: json.Unmarshal,
+		//PassLocalsToViews: true,
 	}
 	if len(frm.config.S3.Address) > 0 {
 		frm.S3 = &s3.MinioStorage{Config: frm.config}
@@ -473,24 +471,23 @@ func New(cfg *config.Config) (framework Framework) {
 		if err != nil {
 			log.Error().Err(err).Send()
 		}
-		engine := html.NewFileSystem(frm.S3, ".html")
+		//engine := html.NewFileSystem(frm.S3, ".html")
 		//engine.Reload(true)
-		engine.Delims("[[", "]]")
-		engine.Layout("/layout/main/index.html")
-		engine.Funcmap = map[string]interface{}{
-			"marshal": func(v interface{}) template.JS {
-				a, _ := json.Marshal(v)
-				return template.JS(a)
-			},
-		}
-
-		if engine != nil {
-			fiberConfig.Views = engine
-		}
+		//engine.Delims("[[", "]]")
+		//engine.Layout("/layout/main/index.html")
+		//engine.Funcmap = map[string]interface{}{
+		//	"marshal": func(v interface{}) template.JS {
+		//		a, _ := json.Marshal(v)
+		//		return template.JS(a)
+		//	},
+		//}
+		//
+		//if engine != nil {
+		//	fiberConfig.Views = engine
+		//}
 	}
 
 	app := fiber.New(fiberConfig)
-
 	frm.httpServer = app
 
 	if frm.config.Temporal.URI != "" {
