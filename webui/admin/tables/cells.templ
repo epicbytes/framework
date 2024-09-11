@@ -1,0 +1,145 @@
+package tables
+
+type CellType string
+type CellAlign string
+
+type CellImpl interface {
+	render() templ.Component
+}
+
+type DefaultCellType struct {
+	Title string `json:"title"`
+}
+
+templ (o DefaultCellType) render() {
+	{ o.Title }
+}
+
+const (
+	CellType_Default CellType = "default"
+)
+
+const (
+	CellAlign_Left   CellAlign = "left"
+	CellAlign_Center CellAlign = "center"
+	CellAlign_Right  CellAlign = "rignt"
+)
+
+type cell struct {
+	title         string
+	cellType      CellType
+	isHeader      bool
+	cellComponent templ.Component
+	options       interface{}
+	attrs         templ.Attributes
+	align         CellAlign
+}
+
+type CellOption func(*cell)
+
+templ (b *cell) cellWrapper() {
+	if b.isHeader {
+		<th { b.attrs... } class={ templ.KV("text-center", b.align == CellAlign_Center),templ.KV("text-right", b.align == CellAlign_Right) }>
+			{ children... }
+		</th>
+	} else {
+		<td { b.attrs... } class={ templ.KV("text-center", b.align == CellAlign_Center),templ.KV("text-right", b.align == CellAlign_Right) }>
+			{ children... }
+		</td>
+	}
+}
+
+templ (b *cell) render() {
+	@b.cellWrapper() {
+		if b.cellComponent != nil {
+			@b.cellComponent
+		} else if b.options != nil {
+			switch opt := b.options.(type) {
+				case CellImpl:
+					@opt.render()
+				default:
+					"not support"
+			}
+		} else {
+			{ b.title }
+		}
+	}
+}
+
+func IsHeader() CellOption {
+	return func(b *cell) {
+		b.isHeader = true
+	}
+}
+
+func WithTitle(title string) CellOption {
+	return func(b *cell) {
+		b.title = title
+	}
+}
+
+func WithAlign(align CellAlign) CellOption {
+	return func(b *cell) {
+		b.align = align
+	}
+}
+
+func WithType(cellType CellType) CellOption {
+	return func(b *cell) {
+		b.cellType = cellType
+	}
+}
+
+func WithCellComponent(cellComponent templ.Component) CellOption {
+	return func(b *cell) {
+		b.cellComponent = cellComponent
+	}
+}
+
+func WithAttrs(attrs templ.Attributes) CellOption {
+	return func(b *cell) {
+		b.attrs = attrs
+	}
+}
+
+// WithOptions add options for cell with concrete type. Please use options from set
+func WithOptions(options interface{}) CellOption {
+	return func(b *cell) {
+		b.options = options
+	}
+}
+
+/*
+NewCell creates cell with some props
+example:
+
+	tables.NewHeaderCell(tables.WithOptions(&tables.DefaultCellType{Title:"cell title"}))
+	tables.NewHeaderCell(tables.WithTitle("cell title"))
+	tables.NewHeaderCell(tables.WithCellComponent(AnotherCellComponent(AnotherCellComponentProps{Title: "cell title"})))
+*/
+func NewCell(options ...CellOption) templ.Component {
+	cl := &cell{
+		title:    "",
+		align:    CellAlign_Left,
+		cellType: CellType_Default,
+	}
+
+	for _, opt := range options {
+		opt(cl)
+	}
+
+	return cl.render()
+}
+
+/*
+NewHeaderCell creates th cell with some props
+example:
+	tables.NewHeaderCell("",tables.WithOptions(&tables.DefaultCellType{Title:"cell title"}))
+	tables.NewHeaderCell("cell title")
+	tables.NewHeaderCell("",tables.WithCellComponent(AnotherCellComponent(AnotherCellComponentProps{Title: "cell title"})))
+	tables.NewCell(tables.AsBoolean(tables.BooleanCellType{ Value: true }))
+*/
+
+templ NewHeaderCell(title string, options ...CellOption) {
+	@NewCell(append(options, WithTitle(title), IsHeader())...)
+}

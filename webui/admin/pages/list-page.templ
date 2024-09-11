@@ -1,0 +1,77 @@
+package pages
+
+import (
+	"context"
+	admin "github.com/epicbytes/framework/webui/admin"
+	"github.com/epicbytes/framework/webui/shared"
+)
+
+type listPage struct {
+	headerComponent templ.Component
+	bodyComponent   []templ.Component
+	withoutForm     bool
+}
+
+type ListPageOption func(*listPage)
+
+func (l *listPage) isHtmx(ctx context.Context) bool {
+	if isHtmx, ok := ctx.Value("isHtml").(bool); !ok {
+		return false
+	} else {
+		return isHtmx
+	}
+}
+
+templ (l *listPage) formWrapper() {
+	if len(shared.GetEntityName(ctx)) > 0 && !l.withoutForm {
+		@admin.NewForm(admin.WithFormId(shared.GetEntityName(ctx)+"-list"), admin.WithEntityName(shared.GetEntityName(ctx)), admin.WithFormUrlPrefix(shared.GetEntityUrlPrefix(ctx)), admin.WithFormMethod(admin.FormMethod_Get), admin.WithFormAttrs(templ.Attributes{"hx-target": "this", "hx-sync": "this"})) {
+			{ children... }
+		}
+	} else {
+		{ children... }
+	}
+}
+
+templ (l *listPage) render() {
+	@l.formWrapper() {
+		if l.headerComponent != nil && !l.isHtmx(ctx) {
+			@l.headerComponent
+		}
+		if l.bodyComponent != nil {
+			<section data-entity={ shared.GetEntityName(ctx) } hx-history="false">
+				for _, body := range l.bodyComponent {
+					@body
+				}
+			</section>
+		}
+	}
+}
+
+func WithHeader(headerComponent templ.Component) ListPageOption {
+	return func(c *listPage) {
+		c.headerComponent = headerComponent
+	}
+}
+func WithoutForm() ListPageOption {
+	return func(c *listPage) {
+		c.withoutForm = true
+	}
+}
+func WithBody(bodyComponent ...templ.Component) ListPageOption {
+	return func(c *listPage) {
+		c.bodyComponent = bodyComponent
+	}
+}
+
+/*
+NewPageBLock creates page block for listing entities with many ListPageOptions
+*/
+func NewPageBLock(options ...ListPageOption) templ.Component {
+	page := &listPage{}
+
+	for _, opt := range options {
+		opt(page)
+	}
+
+	return page.render()
+}

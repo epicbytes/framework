@@ -1,0 +1,46 @@
+package tables
+
+import "context"
+
+type row struct {
+	bodyCells []templ.Component
+	classes   templ.CSSClasses
+	entityId  string
+}
+
+type TableRowOption func(*row)
+
+templ (l *row) render() {
+	if len(l.entityId) > 0 {
+		{{ ctx = context.WithValue(ctx, "itemId", l.entityId) }}
+	}
+	<tr>
+		for _, row := range l.bodyCells {
+			@row
+		}
+	</tr>
+}
+
+func WithEntityId(entityId string) TableRowOption {
+	return func(c *row) {
+		c.entityId = entityId
+	}
+}
+
+func WithCells(bodyCells ...templ.Component) TableRowOption {
+	return func(c *row) {
+		c.bodyCells = bodyCells
+	}
+}
+
+/*
+NewTable creates table for listing entities with many TableOptions
+*/
+func NewRow(options ...TableRowOption) templ.Component {
+	row := &row{}
+	for _, opt := range options {
+		opt(row)
+	}
+
+	return row.render()
+}

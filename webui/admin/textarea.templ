@@ -1,0 +1,160 @@
+package admin
+
+import (
+	"context"
+	"fmt"
+	"github.com/samber/lo"
+	"strings"
+)
+
+type TextareaModifier string
+type TextareaResponsive string
+
+const (
+	// TextareaModifier_Bordered adds border to textarea
+	TextareaModifier_Bordered TextareaModifier = "textarea-bordered"
+	// TextareaModifier_Ghost adds ghost style to textarea
+	TextareaModifier_Ghost TextareaModifier = "textarea-ghost"
+	// TextareaModifier_Primary adds `primary` color to textarea
+	TextareaModifier_Primary TextareaModifier = "textarea-primary"
+	// TextareaModifier_Secondary adds `secondary` color to textarea
+	TextareaModifier_Secondary TextareaModifier = "textarea-secondary"
+	// TextareaModifier_Accent adds `accent` color to textarea
+	TextareaModifier_Accent TextareaModifier = "textarea-accent"
+	// TextareaModifier_Info adds `info` color to textarea
+	TextareaModifier_Info TextareaModifier = "textarea-info"
+	// TextareaModifier_Success adds `success` color to textarea
+	TextareaModifier_Success TextareaModifier = "textarea-success"
+	// TextareaModifier_Warning adds `warning` color to textarea
+	TextareaModifier_Warning TextareaModifier = "textarea-warning"
+	// TextareaModifier_Error adds `error` color to textarea
+	TextareaModifier_Error TextareaModifier = "textarea-error"
+)
+
+const (
+	// TextareaResponsive_Lg for Large size for textarea
+	TextareaResponsive_Lg TextareaResponsive = "textarea-lg"
+	// TextareaResponsive_Md for Medium (default) size for textarea
+	TextareaResponsive_Md TextareaResponsive = "textarea-md"
+	// TextareaResponsive_Sm for Small size for textarea
+	TextareaResponsive_Sm TextareaResponsive = "textarea-sm"
+	// TextareaResponsive_Xs for Extra small size for textarea
+	TextareaResponsive_Xs TextareaResponsive = "textarea-xs"
+)
+
+type textarea struct {
+	label              string
+	name               string
+	placeholder        string
+	value              string
+	classes            templ.CSSClasses
+	textareaModifier   []TextareaModifier
+	textareaResponsive []TextareaResponsive
+	attrs              templ.Attributes
+}
+
+type TextareaOption func(*textarea)
+
+func (b *textarea) buildClasses() templ.CSSClasses {
+	var classes string
+
+	classes = b.classes.String()
+
+	classes += " " + strings.Join(lo.Map(b.textareaModifier, func(item TextareaModifier, index int) string {
+		return string(item)
+	}), " ")
+
+	classes += " " + strings.Join(lo.Map(b.textareaResponsive, func(item TextareaResponsive, index int) string {
+		return string(item)
+	}), " ")
+
+	unifiedClasses := lo.Uniq(strings.Split(classes, " "))
+	return templ.Classes(unifiedClasses)
+}
+
+func (b *textarea) getError(ctx context.Context) string {
+	if values, ok := ctx.Value("errors").(map[string]string); ok {
+		return lo.ValueOr(values, b.name, "")
+	} else {
+		return ""
+	}
+}
+
+templ (b *textarea) render() {
+	<label class="form-control w-full">
+		if len(b.label) > 0 {
+			<div class="label">
+				<span class="label-text">{ b.label }</span>
+			</div>
+		}
+		<div class="grow-wrap">
+			<textarea name={ b.name } placeholder={ b.placeholder } data-value={ b.value } oninput="this.parentNode.dataset.value = this.value" class={ "textarea", b.buildClasses(), templ.KV("textarea-error",len(b.getError(ctx)) > 0 ) } { b.attrs... }>{ b.value }</textarea>
+		</div>
+		if len(b.getError(ctx)) > 0 {
+			<div class="label">
+				<span class="label-text-alt text-error">{ b.getError(ctx) }</span>
+			</div>
+		}
+	</label>
+}
+
+func WithTextareaValue(value any) TextareaOption {
+	return func(b *textarea) {
+		b.value = fmt.Sprintf("%v", value)
+	}
+}
+
+func WithTextareaLabel(label string) TextareaOption {
+	return func(b *textarea) {
+		b.label = label
+	}
+}
+
+func WithTextareaPlaceholder(placeholder string) TextareaOption {
+	return func(b *textarea) {
+		b.placeholder = placeholder
+	}
+}
+
+func WithTextareaModifiers(textareaModifier ...TextareaModifier) TextareaOption {
+	return func(b *textarea) {
+		b.textareaModifier = lo.Uniq(append(b.textareaModifier, textareaModifier...))
+	}
+}
+
+func WithTextareaResponsive(textareaResponsive ...TextareaResponsive) TextareaOption {
+	return func(b *textarea) {
+		b.textareaResponsive = lo.Uniq(append(b.textareaResponsive, textareaResponsive...))
+	}
+}
+
+func WithTextareaAttrs(attrs templ.Attributes) TextareaOption {
+	return func(b *textarea) {
+		b.attrs = attrs
+	}
+}
+
+/*
+NewTextarea creates input with some props
+*/
+func NewTextarea(name string, options ...TextareaOption) templ.Component {
+	tar := &textarea{
+		name:             name,
+		attrs:            templ.Attributes{"rows": 1},
+		textareaModifier: []TextareaModifier{TextareaModifier_Bordered},
+	}
+
+	for _, opt := range options {
+		opt(tar)
+	}
+
+	return tar.render()
+}
+
+/*
+NewTextareaSm creates input smaller with some props
+Textareas allow the user to input values.
+*/
+func NewTextareaSm(name string, options ...TextareaOption) templ.Component {
+	return NewTextarea(name, append(options, WithTextareaResponsive(TextareaResponsive_Sm))...)
+}

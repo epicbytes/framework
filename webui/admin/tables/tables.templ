@@ -1,0 +1,111 @@
+package tables
+
+import "strconv"
+
+type table struct {
+	noDataText      string
+	headerRows      []templ.Component
+	bodyComponent   templ.Component
+	bodyRows        []templ.Component
+	footerComponent templ.Component
+	pinRows         bool
+	classes         templ.CSSClasses
+}
+
+type TableOption func(*table)
+
+templ (l *table) render() {
+	<div class={ "no-scrollbar overflow-x-scroll", l.classes }>
+		<table class={ "table table-zebra", templ.KV("table-pin-rows", l.pinRows) }>
+			if l.headerRows != nil {
+				<thead>
+					<tr>
+						for _, row := range l.headerRows {
+							@row
+						}
+					</tr>
+				</thead>
+			}
+			if l.bodyComponent != nil {
+				@l.bodyComponent
+			}
+			if len(l.bodyRows) > 0 {
+				for _, row := range l.bodyRows {
+					@row
+				}
+			} else {
+				@l.noData()
+			}
+			if l.footerComponent != nil {
+				@l.footerComponent
+			}
+		</table>
+	</div>
+}
+
+func WithNoDataText(noDataText string) TableOption {
+	return func(c *table) {
+		c.noDataText = noDataText
+	}
+}
+
+func WithPinRows(pinRows bool) TableOption {
+	return func(c *table) {
+		c.pinRows = c.pinRows
+	}
+}
+
+func WithHeaderRows(headerRows ...templ.Component) TableOption {
+	return func(c *table) {
+		c.headerRows = headerRows
+	}
+}
+
+func WithBody(bodyComponent templ.Component) TableOption {
+	return func(c *table) {
+		c.bodyComponent = bodyComponent
+	}
+}
+
+func WithData[T any](data []T, fn func(row T) templ.Component) TableOption {
+	return func(c *table) {
+
+		if len(data) == 0 {
+			return
+		}
+
+		var items = make([]templ.Component, len(data))
+
+		for index, item := range data {
+			items[index] = fn(item)
+		}
+
+		c.bodyRows = items
+	}
+}
+
+func WithFooter(footerComponent templ.Component) TableOption {
+	return func(c *table) {
+		c.footerComponent = footerComponent
+	}
+}
+
+templ (c *table) noData() {
+	<tr>
+		<td class="text-center" colspan={ strconv.Itoa(len(c.headerRows)) }>{ c.noDataText }</td>
+	</tr>
+}
+
+/*
+NewTable creates table for listing entities with many TableOptions
+*/
+func NewTable(options ...TableOption) templ.Component {
+	page := &table{
+		noDataText: "no data",
+	}
+	for _, opt := range options {
+		opt(page)
+	}
+
+	return page.render()
+}

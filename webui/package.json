@@ -1,0 +1,25 @@
+{
+  "name": "cascade",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "build_tw": "tailwindcss -i ./static/styles.css -o ./public/styles.css --minify",
+    "analize_tw": "tailwindcss-analysis",
+    "tw_extract": "tw-patch extract",
+    "prepare": "tw-patch install"
+  },
+  "devDependencies": {
+    "autoprefixer": "^10.4.17",
+    "daisyui": "^4.6.2",
+    "esbuild": "^0.20.0",
+    "postcss": "^8.4.31",
+    "tailwindcss": "^3.4.1",
+    "tailwindcss-patch": "^2.2.4"
+  },
+  "dependencies": {
+    "js-base64": "^3.7.7",
+    "simple-notify": "^1.0.4",
+    "sweetalert2": "^11.10.8"
+  }
+}

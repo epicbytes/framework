@@ -1,0 +1,289 @@
+package admin
+
+import (
+	"github.com/epicbytes/framework/webui/shared"
+	"github.com/samber/lo"
+	"strings"
+)
+
+type ButtonType string
+type ButtonModifier string
+type ButtonResponsive string
+
+const (
+	ButtonType_Submit ButtonType = "submit"
+	ButtonType_Button ButtonType = "button"
+	ButtonType_Link   ButtonType = "link"
+)
+
+const (
+	// ButtonModifier_Neutral for Button with `neutral` color
+	ButtonModifier_Neutral ButtonModifier = "btn-neutral"
+	// ButtonModifier_Primary for Button with `primary` color
+	ButtonModifier_Primary ButtonModifier = "btn-primary"
+	// ButtonModifier_Secondary for Button with `secondary` color
+	ButtonModifier_Secondary ButtonModifier = "btn-secondary"
+	// ButtonModifier_Accent for Button with `accent` color
+	ButtonModifier_Accent ButtonModifier = "btn-accent"
+	// ButtonModifier_Info for Button with `info` color
+	ButtonModifier_Info ButtonModifier = "btn-info"
+	// ButtonModifier_Success for Button with `success` color
+	ButtonModifier_Success ButtonModifier = "btn-success"
+	// ButtonModifier_Warning for Button with `warning` color
+	ButtonModifier_Warning ButtonModifier = "btn-warning"
+	// ButtonModifier_Error for Button with `error` color
+	ButtonModifier_Error ButtonModifier = "btn-error"
+	// ButtonModifier_Ghost for Button with ghost style
+	ButtonModifier_Ghost ButtonModifier = "btn-ghost"
+	// ButtonModifier_Link for Button styled as a link
+	ButtonModifier_Link ButtonModifier = "btn-link"
+	// ButtonModifier_Outline for Transparent Button with colored border
+	ButtonModifier_Outline ButtonModifier = "btn-outline"
+	// ButtonModifier_Active for Force button to show active state
+	ButtonModifier_Active ButtonModifier = "btn-active"
+	// ButtonModifier_Disabled for Force button to show disabled state
+	ButtonModifier_Disabled ButtonModifier = "btn-disabled"
+	// ButtonModifier_Glass for Button with a glass effect
+	ButtonModifier_Glass ButtonModifier = "glass"
+	// ButtonModifier_NoAnimation for Disables click animation
+	ButtonModifier_NoAnimation ButtonModifier = "no-animation"
+)
+
+const (
+	// ButtonResponsive_Lg for Large button
+	ButtonResponsive_Lg ButtonResponsive = "btn-lg"
+	// ButtonResponsive_Md for Medium button (default)
+	ButtonResponsive_Md ButtonResponsive = "btn-md"
+	// ButtonResponsive_Sm for Small button
+	ButtonResponsive_Sm ButtonResponsive = "btn-sm"
+	// ButtonResponsive_Xs for Extra small button
+	ButtonResponsive_Xs ButtonResponsive = "btn-xs"
+	// ButtonResponsive_Wide for Wide button (more horizontal padding)
+	ButtonResponsive_Wide ButtonResponsive = "btn-wide"
+	// ButtonResponsive_Block for Full width button
+	ButtonResponsive_Block ButtonResponsive = "btn-block"
+	// ButtonResponsive_Circle for Circle button with a 1:1 ratio
+	ButtonResponsive_Circle ButtonResponsive = "btn-circle"
+	// ButtonResponsive_Square for Square button with a 1:1 ratio
+	ButtonResponsive_Square ButtonResponsive = "btn-square"
+)
+
+type button struct {
+	title            string
+	buttonType       ButtonType
+	buttonModifier   []ButtonModifier
+	buttonResponsive []ButtonResponsive
+	href             string
+	icon             shared.SpritesBase
+	classes          templ.CSSClasses
+	attrs            templ.Attributes
+}
+
+type ButtonOption func(*button)
+
+func (b *button) buildClasses() templ.CSSClasses {
+	var classes string
+
+	classes = b.classes.String()
+
+	classes += " " + strings.Join(lo.Map(b.buttonModifier, func(item ButtonModifier, index int) string {
+		return string(item)
+	}), " ")
+
+	classes += " " + strings.Join(lo.Map(b.buttonResponsive, func(item ButtonResponsive, index int) string {
+		return string(item)
+	}), " ")
+
+	unifiedClasses := lo.Uniq(strings.Split(classes, " "))
+	return templ.Classes(unifiedClasses)
+}
+
+templ (b *button) render() {
+	if b.buttonType == ButtonType_Link {
+		<a
+			class={ "btn", b.buildClasses() }
+			if len(b.href) > 0 {
+				href={ templ.SafeURL(b.href) }
+			}
+			{ b.attrs... }
+		>
+			if b.icon != nil {
+				@NewIcon(b.icon)
+			}
+			if len(b.title) > 0 {
+				<span>{ b.title }</span>
+			}
+		</a>
+	} else {
+		<button type={ string(b.buttonType) } class={ "btn", b.buildClasses() } { b.attrs... }>
+			if b.icon != nil {
+				@NewIcon(b.icon)
+			}
+			if len(b.title) > 0 {
+				<span>{ b.title }</span>
+			}
+		</button>
+	}
+}
+
+func WithTitle(title string) ButtonOption {
+	return func(b *button) {
+		b.title = title
+	}
+}
+
+func WithHref(href string) ButtonOption {
+	return func(b *button) {
+		b.href = href
+	}
+}
+
+func WithIcon(icon shared.SpritesBase) ButtonOption {
+	return func(b *button) {
+		b.icon = icon
+	}
+}
+
+func WithButtonModifiers(buttonModifier ...ButtonModifier) ButtonOption {
+	return func(b *button) {
+		b.buttonModifier = lo.Uniq(append(b.buttonModifier, buttonModifier...))
+	}
+}
+
+func WithButtonResponsive(buttonResponsive ...ButtonResponsive) ButtonOption {
+	return func(b *button) {
+		b.buttonResponsive = lo.Uniq(append(b.buttonResponsive, buttonResponsive...))
+	}
+}
+
+func WithAttrs(attrs templ.Attributes) ButtonOption {
+	return func(b *button) {
+		b.attrs = attrs
+	}
+}
+
+func ButtonAsType(buttonType ButtonType) ButtonOption {
+	return func(b *button) {
+		b.buttonType = buttonType
+	}
+}
+
+/*
+NewButton creates button with some props\n
+Buttons allow the user to take actions or make choices.\n
+Default type is SUBMIT\n
+example:
+
+	@NewButton(WithTitle(lib.T(ctx, "general", "do_filtering")))
+	@NewButton(WithIcon(sprites.ICONS_FUNNEL), WithTitle(lib.T(ctx, "general", "do_filtering")), WithModifiers(ButtonModifier_Warning, ButtonModifier_Outline))
+	@NewButton(WithIcon(sprites.ICONS_XMARK), WithHref(entityUrl), WithResponsive(ButtonResponsive_Square), WithModifiers(ButtonModifier_Error, ButtonModifier_Outline))
+*/
+func NewButton(options ...ButtonOption) templ.Component {
+	btn := &button{
+		title:      "",
+		buttonType: ButtonType_Submit,
+	}
+
+	for _, opt := range options {
+		opt(btn)
+	}
+
+	return btn.render()
+}
+
+/*
+NewButtonSm creates button smaller with some props
+Buttons allow the user to take actions or make choices.
+*/
+func NewButtonSm(options ...ButtonOption) templ.Component {
+	return NewButton(append(options, WithButtonResponsive(ButtonResponsive_Sm))...)
+}
+
+/*
+NewButtonLg creates button bigger with some props
+Buttons allow the user to take actions or make choices.
+*/
+func NewButtonLg(options ...ButtonOption) templ.Component {
+	return NewButton(append(options, WithButtonResponsive(ButtonResponsive_Lg))...)
+}
+
+templ DefaultRefreshButton(icon shared.SpritesBase, attrs templ.Attributes) {
+	@NewButtonSm(
+		WithIcon(icon),
+		WithButtonResponsive(ButtonResponsive_Square),
+		WithButtonModifiers(ButtonModifier_Outline, ButtonModifier_Primary),
+		WithAttrs(lo.Assign(templ.Attributes{
+			"hx-get": shared.GetRefreshUrl(ctx),
+		}, attrs)),
+	)
+}
+
+templ DefaultFilterButton(icon shared.SpritesBase, title string) {
+	@NewButtonSm(
+		WithIcon(icon),
+		WithTitle(title),
+		ButtonAsType(ButtonType_Button),
+		WithButtonModifiers(ButtonModifier_Outline, ButtonModifier_Primary),
+		WithAttrs(templ.Attributes{
+			"hx-get":     shared.GetRefreshUrl(ctx),
+			"hx-include": "#" + shared.GetEntityName(ctx) + "-list",
+		}),
+	)
+}
+
+templ DefaultFilterResetButton(icon shared.SpritesBase) {
+	@NewButtonSm(
+		WithIcon(icon),
+		ButtonAsType(ButtonType_Button),
+		WithButtonResponsive(ButtonResponsive_Square),
+		WithButtonModifiers(ButtonModifier_Outline, ButtonModifier_Error),
+		WithAttrs(templ.Attributes{
+			"hx-get": shared.GetRefreshUrl(ctx),
+		}),
+	)
+}
+
+templ DefaultCreateButton(icon shared.SpritesBase, title string) {
+	@NewButtonSm(
+		WithIcon(icon),
+		WithTitle(title),
+		ButtonAsType(ButtonType_Link),
+		WithButtonModifiers(ButtonModifier_Outline, ButtonModifier_Success),
+		WithAttrs(templ.Attributes{
+			"hx-get": shared.GetCreateUrl(ctx),
+		}),
+	)
+}
+
+templ DefaultCreatePageButton(icon shared.SpritesBase, title string) {
+	@NewButtonSm(
+		WithIcon(icon),
+		WithTitle(title),
+		ButtonAsType(ButtonType_Link),
+		WithButtonModifiers(ButtonModifier_Outline, ButtonModifier_Success),
+		WithHref(shared.GetCreateUrl(ctx)),
+	)
+}
+
+templ DefaultUpdateButton(icon shared.SpritesBase, title string) {
+	@NewButtonSm(
+		WithIcon(icon),
+		WithTitle(title),
+		WithButtonResponsive(ButtonResponsive_Square),
+		WithButtonModifiers(ButtonModifier_Primary, ButtonModifier_Outline),
+		WithAttrs(templ.Attributes{
+			"hx-get": shared.GetUpdateUrl(ctx),
+		}),
+	)
+}
+
+templ DefaultUpdatePageButton(icon shared.SpritesBase, title string) {
+	@NewButtonSm(
+		WithIcon(icon),
+		WithTitle(title),
+		ButtonAsType(ButtonType_Link),
+		WithButtonResponsive(ButtonResponsive_Square),
+		WithButtonModifiers(ButtonModifier_Primary, ButtonModifier_Outline),
+		WithHref(shared.GetUpdateUrl(ctx)),
+	)
+}

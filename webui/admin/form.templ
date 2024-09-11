@@ -1,0 +1,128 @@
+package admin
+
+import (
+	"context"
+	"fmt"
+	"github.com/epicbytes/framework/webui/shared"
+	"github.com/samber/lo"
+	"net/url"
+)
+
+type FormType string
+type FormMethod string
+
+const (
+	FormType_List   FormType = ""
+	FormType_Create FormType = "create"
+	FormType_Update FormType = "update"
+)
+
+const (
+	FormMethod_Get    FormMethod = "GET"
+	FormMethod_Post   FormMethod = "POST"
+	FormMethod_Put    FormMethod = "PUT"
+	FormMethod_Delete FormMethod = "DELETE"
+)
+
+type form struct {
+	urlPrefix  string
+	entityId   string
+	entityName string
+	formId     string
+	formType   FormType
+	formMethod FormMethod
+	attrs      templ.Attributes
+	classes    templ.CSSClasses
+}
+
+func (f *form) makeEntityUrl(ctx context.Context) string {
+	url, _ := url.JoinPath("/", shared.GetEntityUrlPrefix(ctx), shared.GetEntityName(ctx), string(f.formType), fmt.Sprintf("%v", f.entityId))
+	return url
+}
+
+type FormOption func(*form)
+
+func WithFormType(formType FormType) FormOption {
+	return func(f *form) {
+		f.formType = formType
+	}
+}
+
+func WithFormMethod(formMethod FormMethod) FormOption {
+	return func(f *form) {
+		f.formMethod = formMethod
+	}
+}
+
+func WithEntityId(entityId string) FormOption {
+	return func(f *form) {
+		f.entityId = entityId
+	}
+}
+
+func WithEntityName(entityName string) FormOption {
+	return func(f *form) {
+		f.entityName = entityName
+	}
+}
+
+func WithFormAttrs(attrs templ.Attributes) FormOption {
+	return func(f *form) {
+		f.attrs = attrs
+	}
+}
+
+func WithFormUrlPrefix(urlPrefix string) FormOption {
+	return func(f *form) {
+		f.urlPrefix = urlPrefix
+	}
+}
+
+func WithFormId(formId string) FormOption {
+	return func(f *form) {
+		f.formId = formId
+	}
+}
+
+templ (f *form) render() {
+	<form
+		action={ templ.SafeURL(f.makeEntityUrl(ctx)) }
+		if len(f.formId) > 0 {
+			id={ f.formId }
+		}
+		method={ lo.Ternary(f.formMethod == FormMethod_Get, "GET", "POST") }
+		enctype="multipart/form-data"
+		if f.formMethod == FormMethod_Post {
+			hx-post={ f.makeEntityUrl(ctx) }
+		}
+		if f.formMethod == FormMethod_Put {
+			hx-put={ f.makeEntityUrl(ctx) }
+		}
+		if f.formMethod == FormMethod_Delete {
+			hx-delete={ f.makeEntityUrl(ctx) }
+		}
+		if f.formMethod == FormMethod_Get {
+			hx-get={ f.makeEntityUrl(ctx) }
+		}
+	>
+		{ children... }
+	</form>
+}
+
+func NewForm(options ...FormOption) templ.Component {
+	frm := &form{}
+
+	for _, opt := range options {
+		opt(frm)
+	}
+
+	return frm.render()
+}
+
+func NewCreateForm(options ...FormOption) templ.Component {
+	return NewForm(append(options, WithFormType(FormType_Create), WithFormMethod(FormMethod_Post), WithFormAttrs(templ.Attributes{"hx-target": "this", "hx-swap": "outerHTML"}))...)
+}
+
+func NewUpdateForm(entity string, entityId string, urlPrefix string, options ...FormOption) templ.Component {
+	return NewForm(append(options, WithFormType(FormType_Update), WithFormMethod(FormMethod_Post), WithEntityId(entityId), WithFormUrlPrefix(urlPrefix))...)
+}

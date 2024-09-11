@@ -1,0 +1,231 @@
+package admin
+
+import (
+	"context"
+	"fmt"
+	"github.com/epicbytes/framework/webui/shared"
+	"github.com/samber/lo"
+	"strings"
+)
+
+type InputType string
+type InputModifier string
+type InputResponsive string
+
+const (
+	InputType_Button        InputType = "button"
+	InputType_Checkbox      InputType = "checkbox"
+	InputType_Color         InputType = "color"
+	InputType_Date          InputType = "date"
+	InputType_DatetimeLocal InputType = "datetime-local"
+	InputType_Email         InputType = "email"
+	InputType_File          InputType = "file"
+	InputType_Hidden        InputType = "hidden"
+	InputType_Image         InputType = "image"
+	InputType_Month         InputType = "month"
+	InputType_Number        InputType = "number"
+	InputType_Password      InputType = "password"
+	InputType_Radio         InputType = "radio"
+	InputType_Range         InputType = "range"
+	InputType_Reset         InputType = "reset"
+	InputType_Search        InputType = "search"
+	InputType_Submit        InputType = "submit"
+	InputType_Tel           InputType = "tel"
+	InputType_Text          InputType = "text"
+	InputType_Time          InputType = "time"
+	InputType_Url           InputType = "url"
+	InputType_Week          InputType = "week"
+)
+
+const (
+	// InputModifier_Bordered adds border to input
+	InputModifier_Bordered InputModifier = "input-bordered"
+	// InputModifier_Ghost adds ghost style to input
+	InputModifier_Ghost InputModifier = "input-ghost"
+	// InputModifier_Primary adds `primary` color to input
+	InputModifier_Primary InputModifier = "input-primary"
+	// InputModifier_Secondary adds `secondary` color to input
+	InputModifier_Secondary InputModifier = "input-secondary"
+	// InputModifier_Accent adds `accent` color to input
+	InputModifier_Accent InputModifier = "input-accent"
+	// InputModifier_Info adds `info` color to input
+	InputModifier_Info InputModifier = "input-info"
+	// InputModifier_Success adds `success` color to input
+	InputModifier_Success InputModifier = "input-success"
+	// InputModifier_Warning adds `warning` color to input
+	InputModifier_Warning InputModifier = "input-warning"
+	// InputModifier_Error adds `error` color to input
+	InputModifier_Error InputModifier = "input-error"
+)
+
+const (
+	// InputResponsive_Lg For Large size for input
+	InputResponsive_Lg InputResponsive = "input-lg"
+	// InputResponsive_Md For Medium (default) size for input
+	InputResponsive_Md InputResponsive = "input-md"
+	// InputResponsive_Sm For Small size for input
+	InputResponsive_Sm InputResponsive = "input-sm"
+	// InputResponsive_Xs For Extra small size for input
+	InputResponsive_Xs InputResponsive = "input-xs"
+)
+
+type input struct {
+	label              string
+	name               string
+	placeholder        string
+	value              string
+	inputChecked       bool
+	classes            templ.CSSClasses
+	inputType          InputType
+	inputModifier      []InputModifier
+	inputResponsive    []InputResponsive
+	checkboxModifier   []CheckboxModifier
+	checkboxResponsive []CheckboxResponsive
+	icon               shared.SpritesBase
+	attrs              templ.Attributes
+}
+
+type InputOption func(*input)
+
+func (b *input) buildClasses() templ.CSSClasses {
+	var classes string
+
+	classes = b.classes.String()
+
+	if b.inputType == InputType_Checkbox || b.inputType == InputType_Radio {
+		classes += " " + strings.Join(lo.Map(b.checkboxModifier, func(item CheckboxModifier, index int) string {
+			return string(item)
+		}), " ")
+
+		classes += " " + strings.Join(lo.Map(b.checkboxResponsive, func(item CheckboxResponsive, index int) string {
+			return string(item)
+		}), " ")
+	} else {
+		classes += " " + strings.Join(lo.Map(b.inputModifier, func(item InputModifier, index int) string {
+			return string(item)
+		}), " ")
+
+		classes += " " + strings.Join(lo.Map(b.inputResponsive, func(item InputResponsive, index int) string {
+			return string(item)
+		}), " ")
+	}
+	unifiedClasses := lo.Uniq(strings.Split(classes, " "))
+	return templ.Classes(unifiedClasses)
+}
+
+func (b *input) getError(ctx context.Context) string {
+	if values, ok := ctx.Value("errors").(map[string]string); ok {
+		return lo.ValueOr(values, b.name, "")
+	} else {
+		return ""
+	}
+}
+
+func WithInputValue(value any) InputOption {
+	return func(b *input) {
+		b.value = fmt.Sprintf("%v", value)
+	}
+}
+
+func WithInputChecked(inputChecked bool) InputOption {
+	return func(b *input) {
+		b.inputChecked = inputChecked
+	}
+}
+
+func WithInputType(inputType InputType) InputOption {
+	return func(b *input) {
+		b.inputType = inputType
+	}
+}
+
+func WithInputLabel(label string) InputOption {
+	return func(b *input) {
+		b.label = label
+	}
+}
+
+func WithInputPlaceholder(placeholder string) InputOption {
+	return func(b *input) {
+		b.placeholder = placeholder
+	}
+}
+
+func WithInputModifiers(inputModifier ...InputModifier) InputOption {
+	return func(b *input) {
+		b.inputModifier = lo.Uniq(append(b.inputModifier, inputModifier...))
+	}
+}
+
+func WithInputResponsive(inputResponsive ...InputResponsive) InputOption {
+	return func(b *input) {
+		b.inputResponsive = lo.Uniq(append(b.inputResponsive, inputResponsive...))
+	}
+}
+
+func WithInputAttrs(attrs templ.Attributes) InputOption {
+	return func(b *input) {
+		b.attrs = attrs
+	}
+}
+
+templ (b *input) render() {
+	if b.inputType == InputType_Hidden {
+		<input type="hidden" value={ b.value } name={ b.name } { b.attrs... }/>
+	} else if b.inputType == InputType_Checkbox || b.inputType == InputType_Radio {
+		<div class="form-control w-auto">
+			<label class="cursor-pointer label flex items-center justify-start">
+				<input type="checkbox" name={ b.name } checked?={ b.inputChecked } class={ "checkbox", b.buildClasses(), templ.KV("checkbox-error",len(b.getError(ctx)) > 0 ) } { b.attrs... }/>
+				<span class="pl-3 label-text">{ b.label }</span>
+			</label>
+			if len(b.getError(ctx)) > 0 {
+				<div class="label">
+					<span class="label-text-alt text-error">{ b.getError(ctx) }</span>
+				</div>
+			}
+		</div>
+	} else {
+		<label class="form-control w-full">
+			if len(b.label) > 0 {
+				<div class="label">
+					<span class="label-text">{ b.label }</span>
+				</div>
+			}
+			<input type={ string(b.inputType) } value={ b.value } name={ b.name } placeholder={ b.placeholder } class={ "input", b.buildClasses(), templ.KV("input-error",len(b.getError(ctx)) > 0 ) } { b.attrs... }/>
+			if len(b.getError(ctx)) > 0 {
+				<div class="label">
+					<span class="label-text-alt text-error">{ b.getError(ctx) }</span>
+				</div>
+			}
+		</label>
+	}
+}
+
+/*
+NewInput creates input with some props
+*/
+func NewInput(name string, options ...InputOption) templ.Component {
+	inp := &input{
+		name:          name,
+		inputType:     InputType_Text,
+		inputModifier: []InputModifier{InputModifier_Bordered},
+	}
+
+	for _, opt := range options {
+		opt(inp)
+	}
+
+	return inp.render()
+}
+
+/*
+NewInputSm creates input smaller with some props
+Inputs allow the user to input values.
+*/
+func NewInputSm(name string, options ...InputOption) templ.Component {
+	return NewInput(name, append(options, WithInputResponsive(InputResponsive_Sm))...)
+}
+
+func NewHiddenInput(name string, value any) templ.Component {
+	return NewInput(name, WithInputType(InputType_Hidden), WithInputValue(value))
+}

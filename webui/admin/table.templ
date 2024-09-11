@@ -1,0 +1,127 @@
+package admin
+
+import (
+	"github.com/samber/lo"
+	"strings"
+)
+
+type TableResponsive string
+type TableModifier string
+
+const (
+	// Extra small size
+	TableXs TableResponsive = "table-xs"
+	// Small size
+	TableSm TableResponsive = "table-sm"
+	// Normal size
+	TableMd TableResponsive = "table-md"
+	// Large size
+	TableLg TableResponsive = "table-lg"
+)
+
+const (
+	// For <table> to show zebra stripe rows
+	Zebra TableModifier = "table-zebra"
+	// For <table> to make all the rows inside <thead> and <tfoot> sticky
+	PinRows TableModifier = "table-pin-rows"
+	// For <table> to make all the <th> columns sticky
+	PinCols TableModifier = "table-pin-cols"
+)
+
+type TableColumn struct {
+	IsActive bool   `json:"is_active"`
+	Title    string `json:"title"`
+	Order    int    `json:"order"`
+}
+
+type TableSettings[T any] struct {
+	EntityName   string
+	IsEditable   bool
+	IsFilterable bool
+	IsPaginated  bool
+	Columns      []TableColumn
+	Rows         []T
+}
+
+type table[T any] struct {
+	settings    *TableSettings[T]
+	classes     templ.CSSClasses
+	attrs       templ.Attributes
+	responsive  TableResponsive
+	modifiers   []TableModifier
+	headerCells []templ.Component
+	rows        []templ.Component
+}
+
+func Table[T any](settings *TableSettings[T]) *table[T] {
+	return &table[T]{
+		settings: settings,
+	}
+}
+
+// WithClasses sets classes for <table> tag
+func (t *table[T]) WithClasses(classes templ.CSSClasses) *table[T] {
+	t.classes = classes
+	return t
+}
+
+// WithAttributes sets additional attributes for <table> tag
+func (t *table[T]) WithAttributes(attrs templ.Attributes) *table[T] {
+	t.attrs = attrs
+	return t
+}
+
+// WithModifiers sets table modifiers
+func (t *table[T]) WithModifiers(modifiers ...TableModifier) *table[T] {
+	t.modifiers = modifiers
+	return t
+}
+
+// WithResponsive sets responsive options
+func (t *table[T]) WithResponsive(responsive TableResponsive) *table[T] {
+	t.responsive = responsive
+	return t
+}
+
+func (t *table[T]) collectClasses() templ.CSSClasses {
+	var classes string
+
+	classes = t.classes.String()
+
+	classes += " " + strings.Join(lo.Map(t.modifiers, func(item TableModifier, index int) string {
+		return string(item)
+	}), " ")
+
+	classes += " " + string(t.responsive)
+
+	unifiedClasses := lo.Uniq(strings.Split(classes, " "))
+	return templ.Classes(unifiedClasses)
+}
+
+// Build returns templ component
+templ (t table[T]) Build() {
+	<div class="overflow-x-auto">
+		<table class={ "table", t.collectClasses() } { t.attrs... }>
+			if t.settings != nil {
+				<thead>
+					<tr>
+						for _, header := range t.settings.Columns {
+							<th>{ header.Title }</th>
+						}
+					</tr>
+				</thead>
+			}
+			<tbody>
+				<tr>
+					<th>111</th>
+				</tr>
+				<tr>
+					<th>111</th>
+				</tr>
+				<tr>
+					<th>111</th>
+				</tr>
+			</tbody>
+		</table>
+	</div>
+}

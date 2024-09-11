@@ -1,0 +1,23 @@
+package tables
+
+type ActionsCellType struct {
+	Actions []templ.Component
+}
+
+templ (o ActionsCellType) render() {
+	<span class="flex items-center gap-3 justify-end">
+		for _, action := range o.Actions {
+			@action
+		}
+	</span>
+}
+
+func AsActions(options ActionsCellType) CellOption {
+	return func(a *cell) {
+		a.options = options
+	}
+}
+
+func AsDefaultActions(actions ...templ.Component) CellOption {
+	return AsActions(ActionsCellType{Actions: actions})
+}

@@ -1,0 +1,33 @@
+package tables
+
+import "github.com/samber/lo"
+
+type BooleanCellType struct {
+	Value    bool   `json:"value"`
+	YesTitle string `json:"yes_title"`
+	NoTitle  string `json:"no_title"`
+}
+
+func (b BooleanCellType) GetYes() string {
+	if b.YesTitle == "" {
+		return "Да"
+	}
+	return b.YesTitle
+}
+
+func (b BooleanCellType) GetNo() string {
+	if b.NoTitle == "" {
+		return "Нет"
+	}
+	return b.NoTitle
+}
+
+templ (o BooleanCellType) render() {
+	{ lo.Ternary(o.Value, o.GetYes(), o.GetNo()) }
+}
+
+func AsBoolean(options BooleanCellType) CellOption {
+	return func(a *cell) {
+		a.options = options
+	}
+}

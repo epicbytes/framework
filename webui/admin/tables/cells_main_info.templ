@@ -1,0 +1,44 @@
+package tables
+
+import (
+	"github.com/epicbytes/framework/webui/admin"
+	"github.com/epicbytes/framework/webui/shared"
+	"github.com/samber/lo"
+)
+
+type MainInfoCellType struct {
+	Title     string             `json:"title"`
+	SubTitle  string             `json:"sub_title"`
+	Icon      shared.SpritesBase `json:"icon"`
+	IsBigIcon bool               `json:"is-big-icon"`
+	Avatar    string             `json:"avatar"`
+}
+
+templ (m MainInfoCellType) render() {
+	<span class={ "flex gap-2", templ.KV("items-center", m.IsBigIcon) }>
+		if m.Icon != nil {
+			@admin.NewIcon(m.Icon, lo.Ternary(m.IsBigIcon, admin.WithIconClass(templ.Classes("w-6", "h-6", "mr-2")), admin.WithIconClass(templ.Classes("w-4", "h-4"))))
+		}
+		if len(m.Avatar) > 0 {
+			<span class="avatar items-center space-x-2">
+				<span class="w-10 shrink-0 ">
+					<img src={ "https://s3.desend.test/" + m.Avatar } alt={ m.Title }/>
+				</span>
+			</span>
+		}
+		<span class="flex flex-col">
+			if len(m.Title) > 0 {
+				<span class="font-bold">{ m.Title }</span>
+			}
+			if len(m.SubTitle) > 0 {
+				<span>{ m.SubTitle }</span>
+			}
+		</span>
+	</span>
+}
+
+func AsMainInfo(options MainInfoCellType) CellOption {
+	return func(m *cell) {
+		m.options = options
+	}
+}

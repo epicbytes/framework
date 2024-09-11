@@ -1,0 +1,75 @@
+package pages
+
+import (
+	. "github.com/epicbytes/framework/webui/admin"
+	"github.com/epicbytes/framework/webui/shared"
+)
+
+type pageHeader struct {
+	title         string
+	backlintTitle string
+	backlinkHref  string
+	icon          shared.SpritesBase
+	classes       templ.CSSClasses
+	attrs         templ.Attributes
+	buttons       []templ.Component
+}
+
+type PageHeaderOption func(*pageHeader)
+
+templ (b *pageHeader) render() {
+	<header class="w-full">
+		<div class="flex justify-between w-full">
+			if len(b.title) > 0 {
+				<h3 class="md:text-2xl">{ b.title }</h3>
+			}
+			if len(b.buttons)>0 {
+				<div class="flex gap-4">
+					for _, button := range b.buttons {
+						@button
+					}
+				</div>
+			}
+		</div>
+		if len(b.backlinkHref + b.backlintTitle) > 0 {
+			<a class="link inline-flex items-center gap-2 justify-start my-4" href={ templ.SafeURL(b.backlinkHref) }>
+				if b.icon != nil {
+					@NewIcon(b.icon)
+				}
+				<span>{ b.backlintTitle }</span>
+			</a>
+		}
+	</header>
+}
+
+func WithPageHeaderBackLink(icon shared.SpritesBase, backlinkTitle string, backlinkHref string) PageHeaderOption {
+	return func(b *pageHeader) {
+		b.icon = icon
+		b.backlintTitle = backlinkTitle
+		b.backlinkHref = backlinkHref
+	}
+}
+
+func WithPageHeaderButtons(buttons ...templ.Component) PageHeaderOption {
+	return func(b *pageHeader) {
+		b.buttons = buttons
+	}
+}
+
+func WithPageHeaderAttrs(attrs templ.Attributes) PageHeaderOption {
+	return func(b *pageHeader) {
+		b.attrs = attrs
+	}
+}
+
+func NewPageHeader(title string, options ...PageHeaderOption) templ.Component {
+	phd := &pageHeader{
+		title: title,
+	}
+
+	for _, opt := range options {
+		opt(phd)
+	}
+
+	return phd.render()
+}
