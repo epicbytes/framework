@@ -30,16 +30,15 @@ func WithContent(content []templ.Component) ModalOption {
 
 templ (b *modal) render() {
 	<dialog
-		class="modal backdrop:bg-black/70"
+		class="modal backdrop:bg-black/50"
 	>
-		<div class="modal-box w-11/12 max-w-3xl relative p-0 no-scrollbar">
-			<header class="sticky top-0 p-4 bg-base-200 z-10 shadow-lg">
+		<div class="modal-box max-w-3xl relative p-0 no-scrollbar">
+			<header class="sticky top-0 p-4 bg-white z-10">
 				<div class="flex justify-between">
 					if len(b.title) > 0 {
 						<h1 class="text-2xl font-bold">{ b.title }</h1>
 					}
 					<form method="dialog" class={ "flex gap-2", templ.KV("ml-auto", len(b.title) == 0) }>
-						<kbd class="kbd kbd-sm">Esc</kbd>
 						<button formmethod="dialog" class="btn btn-sm btn-circle btn-ghost">
 							<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
 								<path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"></path>
