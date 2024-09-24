@@ -6,11 +6,12 @@ import (
 )
 
 type modal struct {
-	class         templ.CSSClasses
-	title         string
-	content       []templ.Component
-	contentHeader []templ.Component
-	contentFooter []templ.Component
+	class          templ.CSSClasses
+	title          string
+	titleComponent templ.Component
+	content        []templ.Component
+	contentHeader  []templ.Component
+	contentFooter  []templ.Component
 }
 
 type ModalOption func(*modal)
@@ -19,6 +20,12 @@ func WithModalTitle(title string, contentHeader []templ.Component) ModalOption {
 	return func(b *modal) {
 		b.title = title
 		b.contentHeader = contentHeader
+	}
+}
+
+func WithModalTitleComponent(titleComponent templ.Component) ModalOption {
+	return func(b *modal) {
+		b.titleComponent = titleComponent
 	}
 }
 
@@ -33,10 +40,13 @@ templ (b *modal) render() {
 		class="modal backdrop:bg-black/50"
 	>
 		<div class="modal-box max-w-3xl relative p-0 no-scrollbar">
-			<header class="sticky top-0 p-4 bg-white z-10">
+			<header class="sticky top-0 p-4 bg-white z-10 no-scrollbar">
 				<div class="flex justify-between">
 					if len(b.title) > 0 {
 						<h1 class="text-2xl font-bold">{ b.title }</h1>
+					}
+					if b.titleComponent != nil {
+						@b.titleComponent
 					}
 					<form method="dialog" class={ "flex gap-2", templ.KV("ml-auto", len(b.title) == 0) }>
 						<button formmethod="dialog" class="btn btn-sm btn-circle btn-ghost">
@@ -79,15 +89,13 @@ templ ModalFooter() {
 
 func RenderModal(
 	ctx *fiber.Ctx,
-	title string,
-	component templ.Component,
-	componentsHeader ...templ.Component,
+	options ...ModalOption,
 ) error {
 	return htmx.NewResponse().
 		Reswap(htmx.SwapInnerHTML).
 		Retarget(".modal-receiver").
 		AddTrigger(htmx.Trigger("show-modal")).
-		RenderTempl(ctx, NewModal(WithModalTitle(title, componentsHeader), WithContent([]templ.Component{component})))
+		RenderTempl(ctx, NewModal(options...))
 }
 
 templ AlertWrapper(component templ.Component) {
@@ -97,9 +105,9 @@ templ AlertWrapper(component templ.Component) {
 }
 
 func RenderAlertModal(ctx *fiber.Ctx, alertMessage string) error {
-	return RenderModal(ctx, "alert", AlertWrapper(templ.Raw(alertMessage)))
+	return RenderModal(ctx, WithModalTitle("alert", nil), WithContent([]templ.Component{AlertWrapper(templ.Raw(alertMessage))}))
 }
 
 func RenderAlertWithError(ctx *fiber.Ctx, alertMessage string, code int) error {
-	return RenderModal(ctx, "alert error", AlertWrapper(templ.Raw(alertMessage)))
+	return RenderModal(ctx, WithModalTitle("alert error", nil), WithContent([]templ.Component{AlertWrapper(templ.Raw(alertMessage))}))
 }

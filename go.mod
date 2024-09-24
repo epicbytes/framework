@@ -8,7 +8,7 @@ require (
 	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.34.2-20240717164558-a6c49f84cc0f.2
 	connectrpc.com/connect v1.16.2
 	github.com/IBM/sarama v1.43.2
-	github.com/a-h/templ v0.2.747
+	github.com/a-h/templ v0.2.778
 	github.com/agoda-com/opentelemetry-logs-go v0.5.1
 	github.com/alexlast/bunzap v0.1.0
 	github.com/eclipse/paho.mqtt.golang v1.4.3
