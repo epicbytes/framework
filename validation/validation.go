@@ -1,11 +1,12 @@
 package kit
 
 import (
+	"errors"
+	"strings"
+
 	"buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go/buf/validate"
 	"connectrpc.com/connect"
-	"errors"
 	"github.com/gofiber/fiber/v2"
-	"strings"
 )
 
 func InjectValidationError(ctx *fiber.Ctx, error error, addons ...map[string]string) {
@@ -21,7 +22,7 @@ func InjectValidationError(ctx *fiber.Ctx, error error, addons ...map[string]str
 			viol, _ := errr.Value()
 			if v := viol.(*validate.Violations); v != nil {
 				for _, vv := range v.Violations {
-					viols[strings.Replace(strings.TrimPrefix(vv.FieldPath, "item."), "].", "]", -1)] = vv.Message
+					viols[strings.Replace(strings.TrimPrefix(*vv.FieldPath, "item."), "].", "]", -1)] = *vv.Message
 				}
 			}
 		}
