@@ -24,6 +24,7 @@ require (
 	github.com/mattn/go-colorable v0.1.13
 	github.com/minio/minio-go/v7 v7.0.82
 	github.com/monoculum/formam/v3 v3.6.0
+	github.com/nats-io/nats.go v1.38.0
 	github.com/nuttech/bell/v2 v2.2.0
 	github.com/qor/i18n v0.0.0-20240731022134-5432feee3ad2
 	github.com/samber/lo v1.47.0
@@ -111,6 +112,8 @@ require (
 	github.com/monoculum/formam v3.5.5+incompatible // indirect
 	github.com/montanaflynn/stats v0.7.1 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
+	github.com/nats-io/nkeys v0.4.9 // indirect
+	github.com/nats-io/nuid v1.0.1 // indirect
 	github.com/nexus-rpc/sdk-go v0.1.0 // indirect
 	github.com/open-policy-agent/opa v1.0.0 // indirect
 	github.com/pborman/uuid v1.2.1 // indirect
