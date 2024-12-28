@@ -22,17 +22,14 @@ func NewModule() fx.Option {
 		fx.Invoke(func(lc fx.Lifecycle, cfg *Config, js jetstream.JetStream) {
 			lc.Append(fx.Hook{
 				// test connection on start
-				OnStart: func(_ context.Context) error {
-					kv, err := js.KeyValue(context.TODO(), cfg.Bucket)
+				OnStart: func(ctx context.Context) error {
+					kv, err := js.KeyValue(ctx, cfg.Bucket)
 					if err != nil {
 						return err
 					}
-					_, err = kv.ListKeys(context.TODO())
-					if err != nil {
-						return err
-					}
+					_, err = kv.ListKeys(ctx)
 
-					return nil
+					return err
 				},
 				OnStop: func(ctx context.Context) error {
 					return nil

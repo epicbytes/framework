@@ -7,7 +7,7 @@ toolchain go1.23.4
 require (
 	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.1-20241127180247-a33202765966.1
 	connectrpc.com/connect v1.17.0
-	github.com/IBM/sarama v1.43.3
+	github.com/IBM/sarama v1.44.0
 	github.com/a-h/templ v0.2.793
 	github.com/agoda-com/opentelemetry-logs-go v0.5.1
 	github.com/alexlast/bunzap v0.1.0
