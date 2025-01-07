@@ -2,14 +2,15 @@ package http_server
 
 import (
 	"context"
+	"log"
+
 	"go.uber.org/fx"
 	"go.uber.org/zap"
-	"log"
 )
 
 func NewModule() fx.Option {
 	return fx.Module(
-		"http-server",
+		"http_server",
 		fx.Provide(
 			NewServerConfig,
 			NewServer,
