@@ -21,15 +21,8 @@ func NewModule() fx.Option {
 		),
 		fx.Invoke(func(lc fx.Lifecycle, cfg *Config, js jetstream.JetStream) {
 			lc.Append(fx.Hook{
-				// test connection on start
 				OnStart: func(ctx context.Context) error {
-					kv, err := js.KeyValue(ctx, cfg.Bucket)
-					if err != nil {
-						return err
-					}
-					_, err = kv.ListKeys(ctx)
-
-					return err
+					return nil
 				},
 				OnStop: func(ctx context.Context) error {
 					return nil
