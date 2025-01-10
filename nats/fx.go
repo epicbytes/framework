@@ -15,7 +15,6 @@ const (
 func NewModule() fx.Option {
 	return fx.Module(moduleEntityName,
 		fx.Provide(
-			fx.Private,
 			newConfig,
 			newJetStream,
 		),
