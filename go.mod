@@ -5,9 +5,9 @@ go 1.23
 toolchain go1.23.4
 
 require (
-	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.1-20241127180247-a33202765966.1
-	connectrpc.com/connect v1.17.0
-	github.com/IBM/sarama v1.44.0
+	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.2-20241127180247-a33202765966.1
+	connectrpc.com/connect v1.18.1
+	github.com/IBM/sarama v1.45.0
 	github.com/a-h/templ v0.3.819
 	github.com/agoda-com/opentelemetry-logs-go v0.5.1
 	github.com/alexlast/bunzap v0.1.0
@@ -16,12 +16,12 @@ require (
 	github.com/goccy/go-json v0.10.4
 	github.com/gofiber/contrib/opafiber/v2 v2.0.5
 	github.com/gofiber/fiber/v2 v2.52.6
-	github.com/gofiber/storage/redis/v3 v3.1.2
+	github.com/gofiber/storage/redis/v3 v3.1.3
 	github.com/goodsign/monday v1.0.2
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/vault-client-go v0.4.3
 	github.com/kamva/mgm/v3 v3.5.0
-	github.com/mattn/go-colorable v0.1.13
+	github.com/mattn/go-colorable v0.1.14
 	github.com/minio/minio-go/v7 v7.0.83
 	github.com/monoculum/formam/v3 v3.6.0
 	github.com/nats-io/nats.go v1.38.0
@@ -35,7 +35,7 @@ require (
 	github.com/uptrace/bun/driver/pgdriver v1.2.8
 	github.com/uptrace/bun/extra/bunotel v1.2.8
 	github.com/uptrace/opentelemetry-go-extra/otelzap v0.3.2
-	go.mongodb.org/mongo-driver v1.17.1
+	go.mongodb.org/mongo-driver v1.17.2
 	go.opentelemetry.io/otel v1.33.0
 	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc v1.33.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.33.0

@@ -8,7 +8,6 @@ import (
 
 type Config struct {
 	Endpoint string `yaml:"endpoint"`
-	Bucket   string `yaml:"bucket"`
 	User     string `yaml:"user"`
 	Pass     string `yaml:"password"`
 }
